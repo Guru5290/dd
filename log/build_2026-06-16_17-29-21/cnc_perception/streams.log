@@ -1,0 +1,8 @@
+[1.450s] Invoking command in '/home/d/cnc_pose_ws/build/cnc_perception': PYTHONPATH=/home/d/cnc_pose_ws/build/cnc_perception/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/d/cnc_pose_ws/install/cnc_perception/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --uninstall --editable --build-directory /home/d/cnc_pose_ws/build/cnc_perception/build
+[1.826s] usage: setup.py [global_opts] cmd1 [cmd1_opts] [cmd2 [cmd2_opts] ...]
+[1.826s]    or: setup.py --help [cmd1 cmd2 ...]
+[1.826s]    or: setup.py --help-commands
+[1.826s]    or: setup.py cmd --help
+[1.826s] 
+[1.826s] error: option --uninstall not recognized
+[1.862s] Invoked command in '/home/d/cnc_pose_ws/build/cnc_perception' returned '1': PYTHONPATH=/home/d/cnc_pose_ws/build/cnc_perception/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/d/cnc_pose_ws/install/cnc_perception/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --uninstall --editable --build-directory /home/d/cnc_pose_ws/build/cnc_perception/build

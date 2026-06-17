@@ -1,0 +1,43 @@
+# Known physical dimensions of the plain rectangular workpiece (meters).
+workpiece:
+  width_m: 0.120
+  length_m: 0.080
+  thickness_m: 0.010
+
+# Object frame origin at the center of the top face, +X along width, +Y along length, +Z up.
+object_frame:
+  origin: center_top_face
+  x_axis: width
+  y_axis: length
+  z_axis: thickness
+
+# Optional grayscale edge template for template matching fallback.
+# Leave empty to rely on contour-based detection only.
+template:
+  enabled: false
+  path: "package://cnc_perception/config/templates/workpiece_edge_template.png"
+  match_threshold: 0.72
+
+# Contour detection and filtering parameters.
+detection:
+  blur_kernel_size: 5
+  adaptive_block_size: 31
+  adaptive_c: 5
+  canny_low: 40
+  canny_high: 120
+  min_contour_area_px: 2500
+  max_contour_area_px: 500000
+  aspect_ratio_tolerance: 0.12
+  polygon_epsilon_ratio: 0.02
+  min_solidity: 0.85
+
+# Expected apparent size range in image (fraction of image area).
+size_filter:
+  min_area_ratio: 0.02
+  max_area_ratio: 0.80
+
+# Pose estimation behavior.
+pose:
+  use_ippe_for_planar: true
+  publish_debug_image: true
+  pose_smoothing_alpha: 0.35
