@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<robot name="cnc_bed">
+  <!-- Visual model of the machining bed in cnc_bed_frame. -->
+  <link name="cnc_bed_link">
+    <visual>
+      <origin xyz="0.125 0.09 -0.002" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.25 0.18 0.004"/>
+      </geometry>
+      <material name="bed_gray">
+        <color rgba="0.45 0.45 0.48 0.8"/>
+      </material>
+    </visual>
+  </link>
+</robot>

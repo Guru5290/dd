@@ -1,4 +1,0 @@
-/home/d/.local/lib/python3.10/site-packages/setuptools/_distutils/dist.py:289: UserWarning: Unknown distribution option: 'tests_require'
-  warnings.warn(msg)
-[06/16/26 17:28:52] ERROR    listing git files failed - pretending     git.py:26
-                             there aren't any                                   

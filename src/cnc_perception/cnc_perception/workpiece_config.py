@@ -46,6 +46,8 @@ class DetectionConfig:
     min_solidity: float
     min_area_ratio: float
     max_area_ratio: float
+    try_inverted_threshold: bool
+    try_otsu_threshold: bool
     template_enabled: bool
     template_path: str
     template_match_threshold: float
@@ -101,6 +103,8 @@ def load_workpiece_config(config_path: str) -> tuple[WorkpieceDimensions, Detect
         min_solidity=float(detection.get('min_solidity', 0.85)),
         min_area_ratio=float(size_filter.get('min_area_ratio', 0.02)),
         max_area_ratio=float(size_filter.get('max_area_ratio', 0.80)),
+        try_inverted_threshold=bool(detection.get('try_inverted_threshold', True)),
+        try_otsu_threshold=bool(detection.get('try_otsu_threshold', True)),
         template_enabled=bool(template.get('enabled', False)),
         template_path=template_path,
         template_match_threshold=float(template.get('match_threshold', 0.72)),

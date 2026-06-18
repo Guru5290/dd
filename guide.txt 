@@ -1,25 +1,6 @@
 # Markerless 6D Pose Estimation for CNC Workpieces
 
-ROS 2 Jazzy workspace for estimating the pose of a **plain rectangular workpiece** on a **CNC bed coordinate system**, using an overhead ELP-USB GS1200P01 global shutter camera.
-
-**→ Start here: [PROJECT_GUIDE.md](PROJECT_GUIDE.md)** — full mathematics, step-by-step scripts, RViz setup, and troubleshooting.
-
-## Quick start (step-by-step scripts)
-
-```bash
-cd ~/cnc_pose_ws
-source /opt/ros/jazzy/setup.bash
-colcon build && source install/setup.bash
-
-# Terminal 1 — camera
-ros2 run usb_cam usb_cam_node_exe --ros-args \
-  --params-file install/cnc_perception/share/cnc_perception/config/camera_params.yaml
-
-# Terminal 2 — debug detection (50x50x10 mm workpiece on bed)
-ros2 run cnc_perception step04_debug_workpiece_detection
-```
-
-See PROJECT_GUIDE.md for Steps 00–06 (bed calibration, TF, placement check, RViz).
+ROS 2 Jazzy workspace for estimating the pose of a **plain rectangular workpiece** (no ArUco or fiducials) using an overhead ELP-USB GS1200P01 global shutter camera.
 
 ## Architecture
 

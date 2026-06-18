@@ -18,8 +18,15 @@ class DetectionResult:
     score: float
 
 
+@dataclass(frozen=True)
+class ContourCandidate:
+    corners: np.ndarray
+    contour: np.ndarray
+    score: float
+    reason: str
+
+
 def _order_corners_clockwise(points: np.ndarray) -> np.ndarray:
-    """Order 4 points: top-left, top-right, bottom-right, bottom-left."""
     ordered = np.zeros((4, 2), dtype=np.float32)
     s = points.sum(axis=1)
     ordered[0] = points[np.argmin(s)]
@@ -42,23 +49,23 @@ def _contour_aspect_ratio(rect: tuple) -> float:
 def _aspect_ratio_matches(candidate_ratio: float, expected_ratio: float, tolerance: float) -> bool:
     if candidate_ratio <= 0.0:
         return False
-    direct_error = abs(candidate_ratio - expected_ratio) / expected_ratio
-    inverse_error = abs((1.0 / candidate_ratio) - expected_ratio) / expected_ratio
+    direct_error = abs(candidate_ratio - expected_ratio) / max(expected_ratio, 1e-6)
+    inverse_error = abs((1.0 / candidate_ratio) - expected_ratio) / max(expected_ratio, 1e-6)
     return min(direct_error, inverse_error) <= tolerance
 
 
-def _preprocess(gray: np.ndarray, config: DetectionConfig) -> np.ndarray:
+def _edges_from_gray(gray: np.ndarray, config: DetectionConfig, invert: bool) -> np.ndarray:
     if config.blur_kernel_size > 1:
         k = config.blur_kernel_size | 1
         gray = cv2.GaussianBlur(gray, (k, k), 0)
 
-    # Adaptive threshold handles ambient lighting variation better than a fixed threshold.
     block_size = config.adaptive_block_size | 1
+    thresh_type = cv2.THRESH_BINARY_INV if invert else cv2.THRESH_BINARY
     thresh = cv2.adaptiveThreshold(
         gray,
         255,
         cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-        cv2.THRESH_BINARY,
+        thresh_type,
         block_size,
         config.adaptive_c,
     )
@@ -67,71 +74,106 @@ def _preprocess(gray: np.ndarray, config: DetectionConfig) -> np.ndarray:
     return cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel, iterations=1)
 
 
+def _edges_otsu(gray: np.ndarray, config: DetectionConfig) -> np.ndarray:
+    if config.blur_kernel_size > 1:
+        k = config.blur_kernel_size | 1
+        gray = cv2.GaussianBlur(gray, (k, k), 0)
+    _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    edges = cv2.Canny(thresh, config.canny_low, config.canny_high)
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+    return cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel, iterations=1)
+
+
+def _preprocess_variants(gray: np.ndarray, config: DetectionConfig) -> list[tuple[str, np.ndarray]]:
+    variants = [('normal', _edges_from_gray(gray, config, invert=False))]
+    if config.try_inverted_threshold:
+        variants.append(('inverted', _edges_from_gray(gray, config, invert=True)))
+    if config.try_otsu_threshold:
+        variants.append(('otsu', _edges_otsu(gray, config)))
+    return variants
+
+
 def _score_contour(
     contour: np.ndarray,
     image_area: float,
     expected_aspect_ratio: float,
     config: DetectionConfig,
-) -> float:
+) -> tuple[float, str]:
     area = float(cv2.contourArea(contour))
-    if area < config.min_contour_area_px or area > config.max_contour_area_px:
-        return -1.0
+    if area < config.min_contour_area_px:
+        return -1.0, f'area {area:.0f} < min {config.min_contour_area_px:.0f}'
+    if area > config.max_contour_area_px:
+        return -1.0, f'area {area:.0f} > max {config.max_contour_area_px:.0f}'
 
     area_ratio = area / image_area
-    if area_ratio < config.min_area_ratio or area_ratio > config.max_area_ratio:
-        return -1.0
+    if area_ratio < config.min_area_ratio:
+        return -1.0, f'area_ratio {area_ratio:.4f} < min {config.min_area_ratio:.4f}'
+    if area_ratio > config.max_area_ratio:
+        return -1.0, f'area_ratio {area_ratio:.4f} > max {config.max_area_ratio:.4f}'
 
     hull = cv2.convexHull(contour)
     hull_area = float(cv2.contourArea(hull))
     if hull_area <= 1e-6:
-        return -1.0
+        return -1.0, 'degenerate hull'
     solidity = area / hull_area
     if solidity < config.min_solidity:
-        return -1.0
+        return -1.0, f'solidity {solidity:.2f} < min {config.min_solidity:.2f}'
 
     rect = cv2.minAreaRect(contour)
     aspect_ratio = _contour_aspect_ratio(rect)
     if not _aspect_ratio_matches(aspect_ratio, expected_aspect_ratio, config.aspect_ratio_tolerance):
-        return -1.0
+        return -1.0, f'aspect {aspect_ratio:.2f} vs expected {expected_aspect_ratio:.2f}'
 
     peri = cv2.arcLength(contour, True)
     approx = cv2.approxPolyDP(contour, config.polygon_epsilon_ratio * peri, True)
     if len(approx) != 4 or not cv2.isContourConvex(approx):
-        return -1.0
+        return -1.0, f'not convex quad (vertices={len(approx)})'
 
     aspect_error = min(
-        abs(aspect_ratio - expected_aspect_ratio) / expected_aspect_ratio,
-        abs((1.0 / aspect_ratio) - expected_aspect_ratio) / expected_aspect_ratio,
+        abs(aspect_ratio - expected_aspect_ratio) / max(expected_aspect_ratio, 1e-6),
+        abs((1.0 / aspect_ratio) - expected_aspect_ratio) / max(expected_aspect_ratio, 1e-6),
     )
-    return float(solidity * (1.0 - aspect_error) * area_ratio)
+    score = float(solidity * (1.0 - aspect_error) * area_ratio)
+    return score, 'ok'
 
 
-def _detect_from_template(
-    gray: np.ndarray,
-    template_path: str,
-    threshold: float,
-) -> Optional[np.ndarray]:
-    template = cv2.imread(template_path, cv2.IMREAD_GRAYSCALE)
-    if template is None:
-        return None
+def diagnose_contours(
+    image_bgr: np.ndarray,
+    dimensions: WorkpieceDimensions,
+    config: DetectionConfig,
+    top_n: int = 10,
+) -> tuple[list[ContourCandidate], Optional[np.ndarray]]:
+    """Return ranked contour candidates and best edge image for debugging."""
+    gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
+    image_area = float(gray.shape[0] * gray.shape[1])
+    expected_aspect_ratio = dimensions.aspect_ratio
 
-    result = cv2.matchTemplate(gray, template, cv2.TM_CCOEFF_NORMED)
-    _, max_val, _, max_loc = cv2.minMaxLoc(result)
-    if max_val < threshold:
-        return None
+    candidates: list[ContourCandidate] = []
+    best_edges = None
+    best_score = -1.0
 
-    h, w = template.shape[:2]
-    top_left = np.array(max_loc, dtype=np.float32)
-    # Template gives a bounding box; approximate corners for PnP seeding.
-    return np.array(
-        [
-            top_left,
-            top_left + [w, 0],
-            top_left + [w, h],
-            top_left + [0, h],
-        ],
-        dtype=np.float32,
-    )
+    for variant_name, edges in _preprocess_variants(gray, config):
+        contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        for contour in contours:
+            score, reason = _score_contour(contour, image_area, expected_aspect_ratio, config)
+            peri = cv2.arcLength(contour, True)
+            approx = cv2.approxPolyDP(contour, config.polygon_epsilon_ratio * peri, True)
+            if len(approx) == 4:
+                corners = _order_corners_clockwise(approx.reshape(4, 2).astype(np.float32))
+                candidates.append(
+                    ContourCandidate(
+                        corners=corners,
+                        contour=contour,
+                        score=score,
+                        reason=f'{variant_name}: {reason}',
+                    )
+                )
+                if score > best_score:
+                    best_score = score
+                    best_edges = edges
+
+    candidates.sort(key=lambda item: item.score, reverse=True)
+    return candidates[:top_n], best_edges
 
 
 def detect_workpiece_corners(
@@ -142,52 +184,19 @@ def detect_workpiece_corners(
     if image_bgr is None or image_bgr.size == 0:
         return None
 
-    gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
-    image_area = float(gray.shape[0] * gray.shape[1])
-    expected_aspect_ratio = dimensions.aspect_ratio
-
-    if config.template_enabled and config.template_path:
-        template_corners = _detect_from_template(
-            gray,
-            config.template_path,
-            config.template_match_threshold,
-        )
-        if template_corners is not None:
-            return DetectionResult(
-                corners=_order_corners_clockwise(template_corners),
-                contour=template_corners.reshape(-1, 1, 2).astype(np.int32),
-                score=1.0,
-            )
-
-    edges = _preprocess(gray, config)
-    contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-    best_contour = None
-    best_corners = None
-    best_score = -1.0
-
-    for contour in contours:
-        score = _score_contour(contour, image_area, expected_aspect_ratio, config)
-        if score <= best_score:
-            continue
-
-        peri = cv2.arcLength(contour, True)
-        approx = cv2.approxPolyDP(contour, config.polygon_epsilon_ratio * peri, True)
-        if len(approx) != 4:
-            continue
-
-        corners = approx.reshape(4, 2).astype(np.float32)
-        best_contour = contour
-        best_corners = _order_corners_clockwise(corners)
-        best_score = score
-
-    if best_corners is None or best_contour is None:
+    candidates, _ = diagnose_contours(image_bgr, dimensions, config, top_n=1)
+    if not candidates or candidates[0].score <= 0.0:
         return None
 
-    return DetectionResult(corners=best_corners, contour=best_contour, score=best_score)
+    best = candidates[0]
+    return DetectionResult(corners=best.corners, contour=best.contour, score=best.score)
 
 
-def draw_detection_debug(image_bgr: np.ndarray, detection: DetectionResult) -> np.ndarray:
+def draw_detection_debug(
+    image_bgr: np.ndarray,
+    detection: DetectionResult,
+    label: str = '',
+) -> np.ndarray:
     debug = image_bgr.copy()
     cv2.drawContours(debug, [detection.contour], -1, (0, 255, 0), 2)
     for index, corner in enumerate(detection.corners):
@@ -203,4 +212,46 @@ def draw_detection_debug(image_bgr: np.ndarray, detection: DetectionResult) -> n
             1,
             cv2.LINE_AA,
         )
+    if label:
+        cv2.putText(
+            debug,
+            label,
+            (20, 40),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            1.0,
+            (0, 255, 0),
+            2,
+            cv2.LINE_AA,
+        )
+    return debug
+
+
+def draw_diagnostic_overlay(
+    image_bgr: np.ndarray,
+    candidates: list[ContourCandidate],
+    edges: Optional[np.ndarray],
+) -> np.ndarray:
+    debug = image_bgr.copy()
+    for index, candidate in enumerate(candidates[:5]):
+        color = (0, 255, 0) if candidate.score > 0 else (0, 0, 255)
+        cv2.drawContours(debug, [candidate.contour], -1, color, 2)
+        moment = cv2.moments(candidate.contour)
+        if moment['m00'] > 0:
+            cx = int(moment['m10'] / moment['m00'])
+            cy = int(moment['m01'] / moment['m00'])
+            cv2.putText(
+                debug,
+                f'#{index} s={candidate.score:.3f}',
+                (cx - 40, cy),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.45,
+                color,
+                1,
+                cv2.LINE_AA,
+            )
+    if edges is not None:
+        small = cv2.resize(edges, (debug.shape[1] // 4, debug.shape[0] // 4))
+        small_bgr = cv2.cvtColor(small, cv2.COLOR_GRAY2BGR)
+        h, w = small_bgr.shape[:2]
+        debug[0:h, 0:w] = small_bgr
     return debug
