@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
 from typing import Any, Optional
 
@@ -10,6 +11,7 @@ import numpy as np
 import yaml
 
 from cnc_perception.bed_config import BedConfig, BedDimensions
+from cnc_perception.camera_frames import transform_optical_to_link
 from cnc_perception.pose_solver import camera_info_to_matrices
 from cnc_perception.transform_utils import matrix_to_translation_quaternion, transform_to_matrix
 
@@ -28,6 +30,42 @@ def _get_aruco_dictionary(name: str) -> cv2.aruco_Dictionary:
     return cv2.aruco.getPredefinedDictionary(ARUCO_DICTIONARIES[name])
 
 
+def _detect_aruco_markers(gray: np.ndarray, dictionary: cv2.aruco_Dictionary):
+    if hasattr(cv2.aruco, 'ArucoDetector'):
+        parameters = cv2.aruco.DetectorParameters()
+        detector = cv2.aruco.ArucoDetector(dictionary, parameters)
+        corners, ids, _ = detector.detectMarkers(gray)
+        return corners, ids
+    parameters = cv2.aruco.DetectorParameters_create()
+    corners, ids, _ = cv2.aruco.detectMarkers(gray, dictionary, parameters=parameters)
+    return corners, ids
+
+
+def marker_to_bed_transform(marker_yaw_deg: float, flip_marker_y: bool) -> np.ndarray:
+    """
+    Map OpenCV ArUco marker frame to cnc_bed_frame at the bed origin.
+
+    ArUco on a horizontal bed: +Z points toward the camera (same as bed +Z).
+    ArUco +Y points down on the marker print; bed +Y is the opposite in-plane direction.
+    """
+    matrix = np.eye(4, dtype=np.float64)
+    if flip_marker_y:
+        y_flip = np.diag([1.0, -1.0, 1.0])
+    else:
+        y_flip = np.eye(3, dtype=np.float64)
+    yaw = math.radians(marker_yaw_deg)
+    yaw_rot = np.array(
+        [
+            [math.cos(yaw), -math.sin(yaw), 0.0],
+            [math.sin(yaw), math.cos(yaw), 0.0],
+            [0.0, 0.0, 1.0],
+        ],
+        dtype=np.float64,
+    )
+    matrix[:3, :3] = yaw_rot @ y_flip
+    return matrix
+
+
 def detect_aruco_origin_pose(
     image_bgr: np.ndarray,
     camera_matrix: np.ndarray,
@@ -36,30 +74,30 @@ def detect_aruco_origin_pose(
     marker_id: int,
     marker_size_m: float,
 ) -> Optional[tuple[np.ndarray, np.ndarray]]:
-    """Return (rvec, tvec) of marker frame relative to camera."""
+    """Return (rvec, tvec) of marker frame in camera optical coordinates."""
     gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
     dictionary = _get_aruco_dictionary(marker_dictionary)
     corners, ids = _detect_aruco_markers(gray, dictionary)
     if ids is None or len(ids) == 0:
         return None
 
+    half = marker_size_m / 2.0
+    object_points = np.array(
+        [
+            [-half, half, 0.0],
+            [half, half, 0.0],
+            [half, -half, 0.0],
+            [-half, -half, 0.0],
+        ],
+        dtype=np.float64,
+    )
+
     for index, detected_id in enumerate(ids.flatten()):
         if int(detected_id) != marker_id:
             continue
-        marker_corners = corners[index]
-        half = marker_size_m / 2.0
-        object_points = np.array(
-            [
-                [-half, half, 0.0],
-                [half, half, 0.0],
-                [half, -half, 0.0],
-                [-half, -half, 0.0],
-            ],
-            dtype=np.float64,
-        )
         success, rvec, tvec = cv2.solvePnP(
             object_points,
-            marker_corners.reshape(4, 2),
+            corners[index].reshape(4, 2),
             camera_matrix,
             distortion,
             flags=cv2.SOLVEPNP_IPPE,
@@ -67,16 +105,6 @@ def detect_aruco_origin_pose(
         if success:
             return rvec, tvec
     return None
-
-
-def _detect_aruco_markers(gray: np.ndarray, dictionary: cv2.aruco_Dictionary):
-    if hasattr(cv2.aruco, 'ArucoDetector'):
-        parameters = cv2.aruco.DetectorParameters()
-        detector = cv2.aruco.ArucoDetector(dictionary, parameters)
-        corners, ids, _ = detector.detectMarkers(gray)
-        return corners, ids
-    parameters = cv2.aruco.DetectorParameters_create()
-    return cv2.aruco.detectMarkers(gray, dictionary, parameters=parameters)
 
 
 def rvec_tvec_to_matrix(rvec: np.ndarray, tvec: np.ndarray) -> np.ndarray:
@@ -94,15 +122,20 @@ def calibrate_bed_from_aruco(
     image_width: int,
     image_height: int,
     bed_config: BedConfig,
+    *,
+    rectified_image: bool = True,
 ) -> dict[str, Any]:
     """
-    Compute T_camera_bed from ArUco marker at bed origin.
+    Compute static TF camera_link -> cnc_bed_frame from ArUco at bed origin.
 
-    Marker frame convention (OpenCV ArUco): Z out of marker plane.
-  Bed frame: origin at marker center, X along bed length, Y along bed width, Z up.
+    solvePnP is performed in camera optical coordinates, then converted to camera_link.
     """
     camera_matrix, distortion = camera_info_to_matrices(
-        camera_info_k, camera_info_d, image_width, image_height
+        camera_info_k,
+        camera_info_d,
+        image_width,
+        image_height,
+        rectified=rectified_image,
     )
     result = detect_aruco_origin_pose(
         image_bgr,
@@ -119,16 +152,15 @@ def calibrate_bed_from_aruco(
         )
 
     rvec, tvec = result
-    t_camera_marker = rvec_tvec_to_matrix(rvec, tvec)
+    t_optical_marker = rvec_tvec_to_matrix(rvec, tvec)
+    t_marker_bed = marker_to_bed_transform(
+        bed_config.marker.marker_to_bed_yaw_deg,
+        bed_config.marker.flip_marker_y,
+    )
+    t_optical_bed = t_optical_marker @ t_marker_bed
+    t_link_bed = transform_optical_to_link() @ t_optical_bed
 
-    # Align marker frame to bed frame: rotate 180 deg about X so marker Z maps to bed -Z
-    # then rotate 180 about Z if needed. For flat marker on bed: marker Z points toward camera.
-    # Bed Z points up (opposite bed surface normal into bed). R_x(pi) flips Z.
-    flip_z = np.eye(4, dtype=np.float64)
-    flip_z[:3, :3] = np.array([[1, 0, 0], [0, -1, 0], [0, 0, -1]], dtype=np.float64)
-    t_camera_bed = t_camera_marker @ flip_z
-
-    translation, quat = matrix_to_translation_quaternion(t_camera_bed)
+    translation, quat = matrix_to_translation_quaternion(t_link_bed)
     return {
         'calibrated': True,
         'method': 'aruco_origin',
@@ -138,19 +170,19 @@ def calibrate_bed_from_aruco(
         'rotation_xyzw': quat.tolist(),
         'marker_id': bed_config.marker.marker_id,
         'marker_size_m': bed_config.marker.marker_size_m,
+        'marker_to_bed_yaw_deg': bed_config.marker.marker_to_bed_yaw_deg,
+        'rectified_image': rectified_image,
     }
 
 
 def bed_corner_coordinates(bed: BedDimensions) -> np.ndarray:
     """Bed corners in cnc_bed_frame: BL, BR, TR, TL."""
-    length = bed.length_m
-    width = bed.width_m
     return np.array(
         [
             [0.0, 0.0],
-            [length, 0.0],
-            [length, width],
-            [0.0, width],
+            [bed.length_m, 0.0],
+            [bed.length_m, bed.width_m],
+            [0.0, bed.width_m],
         ],
         dtype=np.float64,
     )
@@ -160,11 +192,6 @@ def calibrate_bed_from_corners(
     image_corners_px: np.ndarray,
     bed: BedDimensions,
 ) -> dict[str, Any]:
-    """
-    Compute homography from bed plane (meters) to image pixels.
-
-    image_corners_px: 4 points [BL, BR, TR, TL] in image pixels.
-    """
     if image_corners_px.shape != (4, 2):
         raise ValueError('image_corners_px must be shape (4, 2)')
 
@@ -183,21 +210,6 @@ def calibrate_bed_from_corners(
         'translation_m': [0.0, 0.0, 0.0],
         'rotation_xyzw': [0.0, 0.0, 0.0, 1.0],
     }
-
-
-def bed_xy_to_image_px(homography: np.ndarray, x_m: float, y_m: float) -> tuple[float, float]:
-    point = np.array([x_m, y_m, 1.0], dtype=np.float64)
-    projected = homography @ point
-    projected /= projected[2]
-    return float(projected[0]), float(projected[1])
-
-
-def image_px_to_bed_xy(homography: np.ndarray, u: float, v: float) -> tuple[float, float]:
-    inv_h = np.linalg.inv(homography)
-    point = np.array([u, v, 1.0], dtype=np.float64)
-    projected = inv_h @ point
-    projected /= projected[2]
-    return float(projected[0]), float(projected[1])
 
 
 def save_bed_calibration(path: str, data: dict[str, Any]) -> None:

@@ -35,7 +35,7 @@ class DebugWorkpieceDetectionNode(Node):
         self._output_dir.mkdir(parents=True, exist_ok=True)
         self._bridge = CvBridge()
         self._frame = 0
-        self.create_subscription(Image, '/image_raw', self._image_cb, qos_profile_sensor_data)
+        self.create_subscription(Image, '/image_rect_color', self._image_cb, qos_profile_sensor_data)
         self.get_logger().info(
             f'Step 04: workpiece {self._dimensions.width_m*1000:.0f}x'
             f'{self._dimensions.length_m*1000:.0f}x{self._dimensions.thickness_m*1000:.0f} mm. '

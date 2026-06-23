@@ -14,7 +14,7 @@ class VerifyCameraNode(Node):
         super().__init__('step01_verify_camera')
         self._image_count = 0
         self._camera_info_ok = False
-        self.create_subscription(Image, '/image_raw', self._image_cb, qos_profile_sensor_data)
+        self.create_subscription(Image, '/image_rect_color', self._image_cb, qos_profile_sensor_data)
         self.create_subscription(CameraInfo, '/camera_info', self._info_cb, qos_profile_sensor_data)
         self.create_timer(5.0, self._report)
         self.get_logger().info(
@@ -38,7 +38,7 @@ class VerifyCameraNode(Node):
 
     def _report(self) -> None:
         if self._image_count == 0:
-            self.get_logger().warn('No /image_raw yet. Run usb_cam_node_exe first.')
+            self.get_logger().warn('No /image_rect_color yet. Run image_proc_pipeline.launch.py first.')
         else:
             self.get_logger().info(f'Received {self._image_count} images so far.')
         if not self._camera_info_ok:

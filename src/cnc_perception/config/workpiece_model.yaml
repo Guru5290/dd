@@ -20,11 +20,11 @@ detection:
   blur_kernel_size: 5
   adaptive_block_size: 21
   adaptive_c: 3
-  canny_low: 30
-  canny_high: 100
-  min_contour_area_px: 400
-  max_contour_area_px: 500000
-  aspect_ratio_tolerance: 0.25
+  canny_low: 70       #30   # has been changed to try and eliminate shadow detections.
+  canny_high: 150     #100
+  min_contour_area_px: 2000   #400
+  max_contour_area_px: 15000   #500000
+  aspect_ratio_tolerance: 0.10  #0.25
   polygon_epsilon_ratio: 0.025
   min_solidity: 0.75
   try_inverted_threshold: true

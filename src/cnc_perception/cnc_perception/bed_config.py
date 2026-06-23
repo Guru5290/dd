@@ -32,6 +32,8 @@ class ReferenceMarker:
     marker_id: int
     marker_size_m: float
     placement: str
+    marker_to_bed_yaw_deg: float
+    flip_marker_y: bool
 
 
 @dataclass(frozen=True)
@@ -60,14 +62,16 @@ def load_bed_config(config_path: str) -> BedConfig:
 
     return BedConfig(
         bed=BedDimensions(
-            length_m=float(bed.get('length_m', 0.25)),
+            length_m=float(bed.get('length_m', 0.284)),
             width_m=float(bed.get('width_m', 0.18)),
         ),
         marker=ReferenceMarker(
             dictionary=str(marker.get('dictionary', 'DICT_4X4_50')),
             marker_id=int(marker.get('marker_id', 0)),
-            marker_size_m=float(marker.get('marker_size_m', 0.04)),
+            marker_size_m=float(marker.get('marker_size_m', 0.048)),
             placement=str(marker.get('placement', 'center_at_origin')),
+            marker_to_bed_yaw_deg=float(marker.get('marker_to_bed_yaw_deg', 0.0)),
+            flip_marker_y=bool(marker.get('flip_marker_y', True)),
         ),
         target=TargetPlacement(
             x_m=float(target.get('x_m', 0.1)),

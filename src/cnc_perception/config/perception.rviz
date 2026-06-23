@@ -38,6 +38,18 @@ Visualization Manager:
       Show Axes: true
       Show Names: true
       Update Interval: 0
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: CNC Bed
+      Namespaces:
+        cnc_bed: true
+        target: true
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /cnc_bed/markers
     - Alpha: 1
       Axes Length: 0.12
       Axes Radius: 0.012
@@ -54,7 +66,7 @@ Visualization Manager:
         Durability Policy: Volatile
         History Policy: Keep Last
         Reliability Policy: Reliable
-        Value: /workpiece/actual_pose
+        Value: /workpiece/pose_in_bed_frame
     - Class: rviz_default_plugins/MarkerArray
       Enabled: true
       Name: Workpiece Model
@@ -95,7 +107,7 @@ Visualization Manager:
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
-    Fixed Frame: camera_link
+    Fixed Frame: cnc_bed_frame
     Frame Rate: 30
   Name: root
   Tools:

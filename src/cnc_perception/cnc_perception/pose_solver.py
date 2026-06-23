@@ -22,6 +22,8 @@ def camera_info_to_matrices(
     distortion_data: list[float],
     image_width: int,
     image_height: int,
+    *,
+    rectified: bool = False,
 ) -> tuple[np.ndarray, np.ndarray]:
     if len(camera_matrix_data) != 9:
         raise ValueError('camera_matrix must contain 9 elements')
@@ -37,7 +39,10 @@ def camera_info_to_matrices(
             camera_matrix[0, 2] = image_width / 2.0
             camera_matrix[1, 2] = image_height / 2.0
 
-    distortion = np.array(distortion_data, dtype=np.float64).reshape(-1, 1)
+    if rectified:
+        distortion = np.zeros((5, 1), dtype=np.float64)
+    else:
+        distortion = np.array(distortion_data, dtype=np.float64).reshape(-1, 1)
     return camera_matrix, distortion
 
 
@@ -174,3 +179,6 @@ def smooth_pose(
         rotation_matrix=_quaternion_to_rotation_matrix(blended),
         reprojection_error=current.reprojection_error,
     )
+
+
+

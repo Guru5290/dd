@@ -44,7 +44,7 @@ def generate_launch_description() -> LaunchDescription:
             {'video_device': LaunchConfiguration('video_device')},
         ],
         remappings=[
-            ('image_raw', '/image_raw'),
+            ('image_rect_color', '/image_rect_color'),
             ('camera_info', '/camera_info'),
         ],
     )
@@ -57,7 +57,7 @@ def generate_launch_description() -> LaunchDescription:
         parameters=[
             {
                 'workpiece_config_path': LaunchConfiguration('workpiece_config_path'),
-                'image_topic': '/image_raw',
+                'image_topic': '/image_rect_color',
                 'camera_info_topic': '/camera_info',
                 'camera_frame': 'camera_link',
                 'workpiece_frame': 'workpiece_frame',

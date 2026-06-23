@@ -11,6 +11,20 @@ import numpy as np
 from cnc_perception.workpiece_config import DetectionConfig, WorkpieceDimensions
 
 
+def _interior_exterior_contrast(gray: np.ndarray, contour: np.ndarray) -> float:
+    """Higher when contour interior is darker than the local background (typical workpiece on metal bed)."""
+    mask = np.zeros(gray.shape, dtype=np.uint8)
+    cv2.drawContours(mask, [contour], -1, 255, -1)
+    inner_mean = cv2.mean(gray, mask=mask)[0]
+
+    dilated = cv2.dilate(mask, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15)), iterations=2)
+    ring = cv2.subtract(dilated, mask)
+    if cv2.countNonZero(ring) == 0:
+        return 0.0
+    outer_mean = cv2.mean(gray, mask=ring)[0]
+    return float(max(0.0, outer_mean - inner_mean))
+
+
 @dataclass(frozen=True)
 class DetectionResult:
     corners: np.ndarray
@@ -98,6 +112,7 @@ def _score_contour(
     image_area: float,
     expected_aspect_ratio: float,
     config: DetectionConfig,
+    gray: Optional[np.ndarray] = None,
 ) -> tuple[float, str]:
     area = float(cv2.contourArea(contour))
     if area < config.min_contour_area_px:
@@ -134,6 +149,13 @@ def _score_contour(
         abs((1.0 / aspect_ratio) - expected_aspect_ratio) / max(expected_aspect_ratio, 1e-6),
     )
     score = float(solidity * (1.0 - aspect_error) * area_ratio)
+
+    if gray is not None:
+        contrast = _interior_exterior_contrast(gray, contour)
+        if contrast < 8.0:
+            return -1.0, f'low interior contrast {contrast:.1f} (shadow/clutter?)'
+        score *= min(1.0, contrast / 25.0)
+
     return score, 'ok'
 
 
@@ -155,7 +177,9 @@ def diagnose_contours(
     for variant_name, edges in _preprocess_variants(gray, config):
         contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         for contour in contours:
-            score, reason = _score_contour(contour, image_area, expected_aspect_ratio, config)
+            score, reason = _score_contour(
+                contour, image_area, expected_aspect_ratio, config, gray=gray
+            )
             peri = cv2.arcLength(contour, True)
             approx = cv2.approxPolyDP(contour, config.polygon_epsilon_ratio * peri, True)
             if len(approx) == 4:
@@ -255,3 +279,5 @@ def draw_diagnostic_overlay(
         h, w = small_bgr.shape[:2]
         debug[0:h, 0:w] = small_bgr
     return debug
+
+

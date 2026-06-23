@@ -1,10 +1,6 @@
-# Populated by step02_calibrate_bed_origin.py or step02b_calibrate_bed_corners.py
-# Do not edit by hand unless you know the transform values.
 calibrated: false
-method: none
+method: aruco_origin
 camera_frame: camera_link
 bed_frame: cnc_bed_frame
 translation_m: [0.0, 0.0, 0.0]
 rotation_xyzw: [0.0, 0.0, 0.0, 1.0]
-homography_bed_to_image: []
-bed_corners_image_px: []

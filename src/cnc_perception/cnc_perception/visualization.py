@@ -25,6 +25,39 @@ def make_workpiece_markers(
     dimensions: WorkpieceDimensions,
 ) -> MarkerArray:
     """Build markers expressed in workpiece_frame (origin at top-face center)."""
+    return _build_workpiece_markers(stamp, frame_id, _identity_pose(), dimensions)
+
+
+def make_workpiece_markers_at_pose(
+    stamp,
+    frame_id: str,
+    pose: Pose,
+    dimensions: WorkpieceDimensions,
+) -> MarkerArray:
+    """Build workpiece markers with an explicit pose in the given frame (e.g. cnc_bed_frame)."""
+    return _build_workpiece_markers(stamp, frame_id, pose, dimensions)
+
+
+def make_delete_workpiece_markers(stamp, frame_id: str) -> MarkerArray:
+    """Remove workpiece markers from RViz when detection is lost."""
+    markers = MarkerArray()
+    for marker_id in (0, 1, 2):
+        marker = Marker()
+        marker.header.stamp = stamp
+        marker.header.frame_id = frame_id
+        marker.ns = 'workpiece'
+        marker.id = marker_id
+        marker.action = Marker.DELETE
+        markers.markers.append(marker)
+    return markers
+
+
+def _build_workpiece_markers(
+    stamp,
+    frame_id: str,
+    pose: Pose,
+    dimensions: WorkpieceDimensions,
+) -> MarkerArray:
     half_w = dimensions.width_m / 2.0
     half_l = dimensions.length_m / 2.0
     thickness = dimensions.thickness_m
@@ -38,14 +71,17 @@ def make_workpiece_markers(
     body.id = 0
     body.type = Marker.CUBE
     body.action = Marker.ADD
-    body.pose = _identity_pose()
-    body.pose.position.z = -thickness / 2.0
+    body.pose = Pose()
+    body.pose.position.x = pose.position.x
+    body.pose.position.y = pose.position.y
+    body.pose.position.z = pose.position.z - thickness / 2.0
+    body.pose.orientation = pose.orientation
     body.scale = Vector3(
         x=dimensions.width_m,
         y=dimensions.length_m,
         z=max(thickness, 0.001),
     )
-    body.color = _color(0.2, 0.65, 0.95, 0.45)
+    body.color = _color(0.2, 0.65, 0.95, 0.55)
     markers.markers.append(body)
 
     outline = Marker()
@@ -55,7 +91,7 @@ def make_workpiece_markers(
     outline.id = 1
     outline.type = Marker.LINE_STRIP
     outline.action = Marker.ADD
-    outline.pose = _identity_pose()
+    outline.pose = pose
     outline.scale.x = 0.003
     outline.color = _color(0.1, 1.0, 0.2, 1.0)
     outline.points = [
@@ -74,7 +110,7 @@ def make_workpiece_markers(
     axes.id = 2
     axes.type = Marker.LINE_LIST
     axes.action = Marker.ADD
-    axes.pose = _identity_pose()
+    axes.pose = pose
     axes.scale.x = 0.004
     axis_len = min(dimensions.width_m, dimensions.length_m) * 0.35
     axes.points = [
@@ -86,12 +122,9 @@ def make_workpiece_markers(
         Point(x=0.0, y=0.0, z=axis_len),
     ]
     axes.colors = [
-        _color(1.0, 0.1, 0.1),
-        _color(1.0, 0.1, 0.1),
-        _color(0.1, 1.0, 0.1),
-        _color(0.1, 1.0, 0.1),
-        _color(0.1, 0.4, 1.0),
-        _color(0.1, 0.4, 1.0),
+        _color(1.0, 0.0, 0.0), _color(1.0, 0.0, 0.0),
+        _color(0.0, 1.0, 0.0), _color(0.0, 1.0, 0.0),
+        _color(0.0, 0.4, 1.0), _color(0.0, 0.4, 1.0),
     ]
     markers.markers.append(axes)
 

@@ -85,7 +85,7 @@ def make_bed_markers(stamp, frame_id: str, bed_config: BedConfig) -> MarkerArray
     axes.type = Marker.LINE_LIST
     axes.action = Marker.ADD
     axes.pose = _identity_pose()
-    axes.scale.x = 0.003
+    axes.scale.x = 0.006
     axes.points = [
         Point(x=0.0, y=0.0, z=0.0),
         Point(x=axis_len, y=0.0, z=0.0),
@@ -94,11 +94,13 @@ def make_bed_markers(stamp, frame_id: str, bed_config: BedConfig) -> MarkerArray
         Point(x=0.0, y=0.0, z=0.0),
         Point(x=0.0, y=0.0, z=axis_len),
     ]
+
     axes.colors = [
-        _color(1, 0, 0), _color(1, 0, 0),
-        _color(0, 1, 0), _color(0, 1, 0),
-        _color(0, 0.4, 1), _color(0, 0.4, 1),
+        _color(1.0, 0.0, 0.0), _color(1.0, 0.0, 0.0),
+        _color(0.0, 1.0, 0.0), _color(0.0, 1.0, 0.0),
+        _color(0.0, 0.4, 1.0), _color(0.0, 0.4, 1.0),
     ]
+
     markers.markers.append(axes)
 
     target = _make_target_marker(stamp, frame_id, bed_config.target, marker_id, ok=True)

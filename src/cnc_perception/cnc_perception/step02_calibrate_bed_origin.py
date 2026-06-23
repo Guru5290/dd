@@ -29,7 +29,7 @@ class CalibrateBedOriginNode(Node):
         self._bed_config = load_bed_config(bed_path)
 
         self.create_subscription(CameraInfo, '/camera_info', self._info_cb, qos_profile_sensor_data)
-        self.create_subscription(Image, '/image_raw', self._image_cb, qos_profile_sensor_data)
+        self.create_subscription(Image, '/image_rect_color', self._image_cb, qos_profile_sensor_data)
 
         self.get_logger().info(
             'Step 02: Place ArUco marker (DICT_4X4_50 id=0) at bed origin. '
@@ -58,6 +58,7 @@ class CalibrateBedOriginNode(Node):
                 self._camera_info.width,
                 self._camera_info.height,
                 self._bed_config,
+                rectified_image=True,
             )
             save_bed_calibration(self._output_path, calibration)
             self._done = True

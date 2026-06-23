@@ -5,6 +5,8 @@ from __future__ import annotations
 import math
 from typing import Iterable
 
+import math
+
 import numpy as np
 from geometry_msgs.msg import Pose, Quaternion, Transform
 
@@ -108,3 +110,25 @@ def transform_to_msg(translation: np.ndarray, quat: np.ndarray) -> Transform:
         w=float(quat[3]),
     )
     return msg
+
+
+def is_pose_center_on_bed(
+    t_bed_workpiece: np.ndarray,
+    bed_length_m: float,
+    bed_width_m: float,
+    margin_m: float = 0.015,
+) -> bool:
+    """Return True when the workpiece center lies inside the CNC bed footprint."""
+    x_m = float(t_bed_workpiece[0, 3])
+    y_m = float(t_bed_workpiece[1, 3])
+    return (
+        margin_m <= x_m <= bed_length_m - margin_m
+        and margin_m <= y_m <= bed_width_m - margin_m
+    )
+
+
+def surface_normal_tilt_deg(rotation: np.ndarray) -> float:
+    """Angle between the object +Z axis and the bed +Z axis (degrees)."""
+    normal = rotation[:, 2]
+    cos_angle = float(np.clip(normal[2], -1.0, 1.0))
+    return float(math.degrees(math.acos(cos_angle)))

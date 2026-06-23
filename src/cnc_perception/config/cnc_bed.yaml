@@ -1,25 +1,27 @@
 # CNC machining bed definition in cnc_bed_frame (meters).
 # Origin: bottom-left corner of the machining bed, Z=0 on the top surface.
 cnc_bed:
-  length_m: 0.250
+  length_m: 0.284
   width_m: 0.180
   origin_corner: bottom_left
   axis_convention:
-    x: along_bed_length
-    y: along_bed_width
+    x: along_bed_length   # bottom-left -> bottom-right (284 mm)
+    y: along_bed_width    # bottom-left -> top-left (180 mm)
     z: up_from_bed_surface
 
-# Bed reference marker (recommended: ArUco outside the machining zone).
-# Print DICT_4X4_50 id 0 — see PROJECT_GUIDE.md for placement.
+# ArUco marker at bed origin (print with step00_generate_aruco_marker.py).
 reference_marker:
   type: aruco
   dictionary: DICT_4X4_50
   marker_id: 0
-  marker_size_m: 0.040
-  # Marker center is placed at bed origin (0, 0, 0). X/Y axes align with bed axes.
+  marker_size_m: 0.048
   placement: center_at_origin
+  # Rotate marker print if its +X is not aligned with bed +X (try 0, 90, -90).
+  marker_to_bed_yaw_deg: 0.0
+  # ArUco +Y points down on the print; bed +Y points into the bed — keep true.
+  flip_marker_y: true
 
-# Target placement for the workpiece center on the bed (meters).
+# Target placement for workpiece center on the bed (meters).
 target_placement:
   x_m: 0.100
   y_m: 0.100
@@ -30,7 +32,6 @@ target_placement:
     z_mm: 1.5
     yaw_deg: 3.0
 
-# Optional STL mesh for RViz (provide your CAD export path).
 workpiece_mesh:
   enabled: false
   stl_path: "package://cnc_perception/meshes/workpiece.stl"
