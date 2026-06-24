@@ -35,6 +35,9 @@ def main() -> None:
     cv2.imwrite(str(output), marker)
     print(f'Saved ArUco marker id={args.id} to {output}')
     print('Print at exactly the size configured in cnc_bed.yaml (marker_size_m).')
+    print('Place FLAT at FRONT-LEFT bed corner (bed origin).')
+    print('Orient so the marker looks UPRIGHT in the camera — one edge along the front bed edge (+X).')
+    print('See SETUP_AND_CALIBRATION_GUIDE.md for a diagram.')
 
 
 if __name__ == '__main__':

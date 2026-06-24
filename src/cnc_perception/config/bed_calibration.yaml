@@ -1,6 +1,17 @@
-calibrated: false
-method: aruco_origin
-camera_frame: camera_link
 bed_frame: cnc_bed_frame
-translation_m: [0.0, 0.0, 0.0]
-rotation_xyzw: [0.0, 0.0, 0.0, 1.0]
+calibrated: true
+camera_frame: camera_link
+marker_id: 0
+marker_size_m: 0.048
+marker_to_bed_yaw_deg: 180.0
+method: aruco_origin
+rectified_image: true
+rotation_xyzw:
+- 0.550815251328311
+- 0.38519444703029093
+- 0.5925995508880079
+- -0.4439071627812389
+translation_m:
+- -0.11320367798400056
+- -0.3234815304738558
+- 0.0305988492839119

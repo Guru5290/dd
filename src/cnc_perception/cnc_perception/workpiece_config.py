@@ -33,6 +33,15 @@ class WorkpieceDimensions:
 
 
 @dataclass(frozen=True)
+class DetectionRoi:
+    enabled: bool
+    x_min_ratio: float
+    y_min_ratio: float
+    x_max_ratio: float
+    y_max_ratio: float
+
+
+@dataclass(frozen=True)
 class DetectionConfig:
     blur_kernel_size: int
     adaptive_block_size: int
@@ -49,6 +58,8 @@ class DetectionConfig:
     max_area_ratio: float
     try_inverted_threshold: bool
     try_otsu_threshold: bool
+    use_relaxed_fallback: bool
+    roi: DetectionRoi
     template_enabled: bool
     template_path: str
     template_match_threshold: float
@@ -90,6 +101,7 @@ def load_workpiece_config(config_path: str) -> tuple[WorkpieceDimensions, Detect
     )
 
     template_path = _resolve_package_uri(str(template.get('path', ''))) if template.get('path') else ''
+    roi_raw = detection.get('roi', {})
 
     config = DetectionConfig(
         blur_kernel_size=int(detection.get('blur_kernel_size', 5)),
@@ -107,6 +119,14 @@ def load_workpiece_config(config_path: str) -> tuple[WorkpieceDimensions, Detect
         max_area_ratio=float(size_filter.get('max_area_ratio', 0.80)),
         try_inverted_threshold=bool(detection.get('try_inverted_threshold', True)),
         try_otsu_threshold=bool(detection.get('try_otsu_threshold', True)),
+        use_relaxed_fallback=bool(detection.get('use_relaxed_fallback', True)),
+        roi=DetectionRoi(
+            enabled=bool(roi_raw.get('enabled', False)),
+            x_min_ratio=float(roi_raw.get('x_min_ratio', 0.0)),
+            y_min_ratio=float(roi_raw.get('y_min_ratio', 0.0)),
+            x_max_ratio=float(roi_raw.get('x_max_ratio', 1.0)),
+            y_max_ratio=float(roi_raw.get('y_max_ratio', 1.0)),
+        ),
         template_enabled=bool(template.get('enabled', False)),
         template_path=template_path,
         template_match_threshold=float(template.get('match_threshold', 0.72)),

@@ -8,7 +8,18 @@ from typing import Optional
 import cv2
 import numpy as np
 
-from cnc_perception.workpiece_config import DetectionConfig, WorkpieceDimensions
+from cnc_perception.workpiece_config import DetectionConfig, DetectionRoi, WorkpieceDimensions
+
+
+def _apply_roi(image_bgr: np.ndarray, roi: DetectionRoi) -> tuple[np.ndarray, tuple[int, int]]:
+    if not roi.enabled:
+        return image_bgr, (0, 0)
+    height, width = image_bgr.shape[:2]
+    x1 = int(width * roi.x_min_ratio)
+    y1 = int(height * roi.y_min_ratio)
+    x2 = max(x1 + 1, int(width * roi.x_max_ratio))
+    y2 = max(y1 + 1, int(height * roi.y_max_ratio))
+    return image_bgr[y1:y2, x1:x2].copy(), (x1, y1)
 
 
 def _interior_exterior_contrast(gray: np.ndarray, contour: np.ndarray) -> float:
@@ -166,7 +177,8 @@ def diagnose_contours(
     top_n: int = 10,
 ) -> tuple[list[ContourCandidate], Optional[np.ndarray]]:
     """Return ranked contour candidates and best edge image for debugging."""
-    gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
+    cropped, (offset_x, offset_y) = _apply_roi(image_bgr, config.roi)
+    gray = cv2.cvtColor(cropped, cv2.COLOR_BGR2GRAY)
     image_area = float(gray.shape[0] * gray.shape[1])
     expected_aspect_ratio = dimensions.aspect_ratio
 
@@ -175,7 +187,7 @@ def diagnose_contours(
     best_score = -1.0
 
     for variant_name, edges in _preprocess_variants(gray, config):
-        contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        contours, _ = cv2.findContours(edges, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
         for contour in contours:
             score, reason = _score_contour(
                 contour, image_area, expected_aspect_ratio, config, gray=gray
@@ -184,10 +196,12 @@ def diagnose_contours(
             approx = cv2.approxPolyDP(contour, config.polygon_epsilon_ratio * peri, True)
             if len(approx) == 4:
                 corners = _order_corners_clockwise(approx.reshape(4, 2).astype(np.float32))
+                offset = np.array([offset_x, offset_y], dtype=np.float32)
+                contour_full = contour + offset.reshape(1, 1, 2)
                 candidates.append(
                     ContourCandidate(
-                        corners=corners,
-                        contour=contour,
+                        corners=corners + offset,
+                        contour=contour_full,
                         score=score,
                         reason=f'{variant_name}: {reason}',
                     )
@@ -208,12 +222,35 @@ def detect_workpiece_corners(
     if image_bgr is None or image_bgr.size == 0:
         return None
 
-    candidates, _ = diagnose_contours(image_bgr, dimensions, config, top_n=1)
-    if not candidates or candidates[0].score <= 0.0:
+    candidates, _ = diagnose_contours(image_bgr, dimensions, config, top_n=5)
+    if not candidates:
         return None
 
     best = candidates[0]
-    return DetectionResult(corners=best.corners, contour=best.contour, score=best.score)
+    if best.score <= 0.0:
+        if not config.use_relaxed_fallback:
+            return None
+        relaxed = _pick_relaxed_candidate(candidates)
+        if relaxed is None:
+            return None
+        best = relaxed
+
+    return DetectionResult(corners=best.corners.copy(), contour=best.contour, score=best.score)
+
+
+def _pick_relaxed_candidate(candidates: list[ContourCandidate]) -> Optional[ContourCandidate]:
+    """Accept the best quadrilateral when strict scoring fails but geometry is plausible."""
+    for candidate in candidates:
+        if candidate.score > 0.0:
+            return candidate
+        if 'not convex quad' in candidate.reason:
+            continue
+        if 'aspect' in candidate.reason:
+            continue
+        if 'area' in candidate.reason and 'area_ratio' not in candidate.reason:
+            continue
+        return candidate
+    return None
 
 
 def draw_detection_debug(

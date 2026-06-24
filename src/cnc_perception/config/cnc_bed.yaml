@@ -1,27 +1,26 @@
-# CNC machining bed definition in cnc_bed_frame (meters).
-# Origin: bottom-left corner of the machining bed, Z=0 on the top surface.
+# CNC bed frame for Genmitsu 3018-PRO (meters).
+# Origin: FRONT-LEFT corner of the metal bed (ArUco marker center at calibration).
+# Matches labels on your bed: +X right, +Y toward back of machine.
 cnc_bed:
   length_m: 0.284
   width_m: 0.180
-  origin_corner: bottom_left
+  origin_corner: front_left
   axis_convention:
-    x: along_bed_length   # bottom-left -> bottom-right (284 mm)
-    y: along_bed_width    # bottom-left -> top-left (180 mm)
+    x: along_front_edge_to_the_right
+    y: along_left_edge_to_the_back
     z: up_from_bed_surface
 
-# ArUco marker at bed origin (print with step00_generate_aruco_marker.py).
 reference_marker:
   type: aruco
   dictionary: DICT_4X4_50
   marker_id: 0
   marker_size_m: 0.048
   placement: center_at_origin
-  # Rotate marker print if its +X is not aligned with bed +X (try 0, 90, -90).
+  # See SETUP_AND_CALIBRATION_GUIDE.md for marker print orientation.
+  # After placing marker, tune only if RViz bed axes do not match real bed edges.
   marker_to_bed_yaw_deg: 0.0
-  # ArUco +Y points down on the print; bed +Y points into the bed — keep true.
   flip_marker_y: true
 
-# Target placement for step06 placement check (optional RViz marker).
 target_placement:
   show_target_marker: false
   x_m: 0.100

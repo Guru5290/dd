@@ -84,12 +84,20 @@ def _planar_pose_facing_score(rotation_matrix: np.ndarray, translation: np.ndarr
     return float(np.dot(normal, view_toward_camera))
 
 
+def _pose_rank(pose: PoseEstimate) -> float:
+    """Lower is better: tight reprojection + top face toward camera (rejects shadow blobs)."""
+    facing = _planar_pose_facing_score(pose.rotation_matrix, pose.translation)
+    facing_penalty = max(0.0, 0.35 - facing) * 120.0
+    depth_penalty = 80.0 if pose.translation[2] <= 0.01 else 0.0
+    return pose.reprojection_error + facing_penalty + depth_penalty
+
+
 def _pick_best_planar_pose(candidates: list[PoseEstimate]) -> Optional[PoseEstimate]:
     if not candidates:
         return None
     viable = [pose for pose in candidates if _planar_pose_facing_score(pose.rotation_matrix, pose.translation) > 0.0]
     pool = viable if viable else candidates
-    pool.sort(key=lambda pose: pose.reprojection_error)
+    pool.sort(key=_pose_rank)
     return pool[0]
 
 

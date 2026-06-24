@@ -194,14 +194,27 @@ Then **re-run step02 and step03**.
 
 ## Tuning detection (shadows)
 
-Edit `config/workpiece_model.yaml`:
+**Do not** use aggressive values — they reject the real workpiece:
 
 ```yaml
+# BAD — caused detection failures
 detection:
   canny_low: 70
   canny_high: 150
   min_contour_area_px: 2000
   max_contour_area_px: 15000
+```
+
+**Recommended** (already in `workpiece_model.yaml`):
+
+```yaml
+detection:
+  canny_low: 30
+  canny_high: 100
+  min_contour_area_px: 250
+  max_contour_area_px: 200000
+  max_area_ratio: 0.30
+  use_relaxed_fallback: true
 ```
 
 Use step04 to debug:

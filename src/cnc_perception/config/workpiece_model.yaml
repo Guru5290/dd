@@ -15,27 +15,36 @@ template:
   path: "package://cnc_perception/config/templates/workpiece_edge_template.png"
   match_threshold: 0.72
 
-# Detection tuned for 50 mm stock on Genmitsu 3018 with side-mounted camera.
+# Detection for 50 mm stock, ELP side-mounted tilted camera, open metal bed.
 detection:
   blur_kernel_size: 5
   adaptive_block_size: 21
-  adaptive_c: 3
-  canny_low: 35
-  canny_high: 110
-  min_contour_area_px: 600
-  max_contour_area_px: 120000
-  aspect_ratio_tolerance: 0.30
-  polygon_epsilon_ratio: 0.03
-  min_solidity: 0.65
-  min_interior_contrast: 4.0
+  adaptive_c: 2
+  canny_low: 30
+  canny_high: 100
+  min_contour_area_px: 250
+  max_contour_area_px: 200000
+  aspect_ratio_tolerance: 0.35
+  polygon_epsilon_ratio: 0.035
+  min_solidity: 0.55
+  min_interior_contrast: 0.0
   try_inverted_threshold: true
   try_otsu_threshold: true
+  use_relaxed_fallback: true
+  # Full bed visible — no ROI crop. Enable only to mask a fixed clutter region.
+  roi:
+    enabled: false
+    x_min_ratio: 0.0
+    y_min_ratio: 0.0
+    x_max_ratio: 1.0
+    y_max_ratio: 1.0
 
 size_filter:
-  min_area_ratio: 0.0005
-  max_area_ratio: 0.85
+  min_area_ratio: 0.0002
+  # Reject huge merged part+shadow blobs (50 mm part is usually <25% of image).
+  max_area_ratio: 0.30
 
 pose:
   use_ippe_for_planar: true
   publish_debug_image: true
-  pose_smoothing_alpha: 0.35
+  pose_smoothing_alpha: 0.30

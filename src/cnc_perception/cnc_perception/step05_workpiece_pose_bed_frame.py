@@ -6,6 +6,7 @@ from __future__ import annotations
 import os
 from typing import Optional
 
+import cv2
 import numpy as np
 import rclpy
 from rclpy import duration
@@ -20,7 +21,11 @@ from visualization_msgs.msg import MarkerArray
 from cnc_perception.bed_config import load_bed_config
 from cnc_perception.bed_visualization import make_bed_markers
 from cnc_perception.camera_frames import LINK_FRAME, OPTICAL_FRAME, transform_optical_to_link
-from cnc_perception.contour_detector import detect_workpiece_corners, draw_detection_debug
+from cnc_perception.contour_detector import (
+    detect_workpiece_corners,
+    diagnose_contours,
+    draw_detection_debug,
+)
 from cnc_perception.pose_solver import (
     PoseEstimate,
     camera_info_to_matrices,
@@ -50,9 +55,10 @@ class WorkpiecePoseBedFrameNode(Node):
         self.declare_parameter('bed_config_path', '')
         self.declare_parameter('image_topic', '/image_rect_color')
         self.declare_parameter('camera_info_topic', '/camera_info')
-        self.declare_parameter('max_reprojection_error_px', 6.0)
-        self.declare_parameter('bed_margin_m', 0.012)
-        self.declare_parameter('max_surface_tilt_deg', 25.0)
+        self.declare_parameter('max_reprojection_error_px', 10.0)
+        self.declare_parameter('bed_margin_m', 0.005)
+        self.declare_parameter('max_surface_tilt_deg', 35.0)
+        self.declare_parameter('publish_pose_only_when_flat', False)
         self.declare_parameter('use_rectified_camera_info', True)
 
         self._dimensions, self._detection = load_workpiece_config(
@@ -161,11 +167,20 @@ class WorkpiecePoseBedFrameNode(Node):
 
         detection = detect_workpiece_corners(image, self._dimensions, self._detection)
         if detection is None:
-            if self._consecutive_failures % 30 == 1:
-                self.get_logger().warn(
-                    'Contour detection failed. Run step04 and check /tmp/cnc_perception_debug.',
-                    throttle_duration_sec=2.0,
-                )
+            if self._consecutive_failures % 15 == 0:
+                candidates, _ = diagnose_contours(image, self._dimensions, self._detection, top_n=3)
+                if candidates:
+                    self.get_logger().warn('Contour detection failed. Top candidates:')
+                    for index, candidate in enumerate(candidates[:3]):
+                        self.get_logger().warn(
+                            f'  #{index} score={candidate.score:.3f} {candidate.reason}'
+                        )
+                else:
+                    self.get_logger().warn(
+                        'No quadrilateral contours found. Check lighting and workpiece_model.yaml.',
+                        throttle_duration_sec=2.0,
+                    )
+            self._publish_debug_frame(image, msg, None, 'NO DETECTION')
             self._handle_detection_lost(msg.header.stamp)
             return
 
@@ -241,13 +256,17 @@ class WorkpiecePoseBedFrameNode(Node):
             return
 
         tilt_deg = surface_normal_tilt_deg(t_bed_workpiece[:3, :3])
+        require_flat = self.get_parameter('publish_pose_only_when_flat').get_parameter_value().bool_value
         if tilt_deg > max_tilt:
             self.get_logger().warn(
-                f'Workpiece appears tilted ({tilt_deg:.1f} deg) — check calibration or shadow.',
+                f'Workpiece tilt {tilt_deg:.1f} deg > {max_tilt:.1f} deg — '
+                'check bed calibration (marker yaw) or shadow.',
                 throttle_duration_sec=2.0,
             )
-            self._handle_detection_lost(stamp)
-            return
+            self._publish_debug_frame(image, msg, detection, f'TILT {tilt_deg:.0f}deg')
+            if require_flat:
+                self._handle_detection_lost(stamp)
+                return
 
         pose_bed = PoseStamped()
         pose_bed.header.stamp = stamp
@@ -284,6 +303,24 @@ class WorkpiecePoseBedFrameNode(Node):
         self._detection_active = True
 
         debug = draw_detection_debug(image, detection, 'OK')
+        self._publish_debug_frame(image, msg, detection, 'OK')
+
+    def _publish_debug_frame(
+        self,
+        image,
+        msg: Image,
+        detection,
+        label: str,
+    ) -> None:
+        if detection is None:
+            candidates, edges = diagnose_contours(image, self._dimensions, self._detection, top_n=3)
+            from cnc_perception.contour_detector import draw_diagnostic_overlay
+            debug = draw_diagnostic_overlay(image, candidates, edges)
+            cv2.putText(
+                debug, label, (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 2, cv2.LINE_AA
+            )
+        else:
+            debug = draw_detection_debug(image, detection, label)
         debug_msg = bgr_to_image_msg(debug, msg.header, msg.header.frame_id or OPTICAL_FRAME)
         self._debug_pub.publish(debug_msg)
 
