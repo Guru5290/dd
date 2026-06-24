@@ -6,13 +6,13 @@ from __future__ import annotations
 import os
 
 import rclpy
-from cv_bridge import CvBridge
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import CameraInfo, Image
 
 from cnc_perception.bed_calibration import calibrate_bed_from_aruco, save_bed_calibration
 from cnc_perception.bed_config import load_bed_config
+from cnc_perception.image_utils import image_msg_to_bgr
 
 
 class CalibrateBedOriginNode(Node):
@@ -20,7 +20,6 @@ class CalibrateBedOriginNode(Node):
         super().__init__('step02_calibrate_bed_origin')
         self.declare_parameter('bed_config_path', '')
         self.declare_parameter('output_path', '')
-        self._bridge = CvBridge()
         self._camera_info: CameraInfo | None = None
         self._done = False
 
@@ -50,7 +49,7 @@ class CalibrateBedOriginNode(Node):
         if self._done or self._camera_info is None:
             return
         try:
-            image = self._bridge.imgmsg_to_cv2(msg, 'bgr8')
+            image = image_msg_to_bgr(msg)
             calibration = calibrate_bed_from_aruco(
                 image,
                 list(self._camera_info.k),

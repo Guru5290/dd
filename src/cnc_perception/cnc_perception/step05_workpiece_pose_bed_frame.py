@@ -9,7 +9,6 @@ from typing import Optional
 import numpy as np
 import rclpy
 from rclpy import duration
-from cv_bridge import CvBridge, CvBridgeError
 from geometry_msgs.msg import PoseStamped, TransformStamped
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
@@ -40,6 +39,7 @@ from cnc_perception.visualization import (
     make_delete_workpiece_markers,
     make_workpiece_markers_at_pose,
 )
+from cnc_perception.image_utils import bgr_to_image_msg, image_msg_to_bgr
 from cnc_perception.workpiece_config import load_workpiece_config
 
 
@@ -62,7 +62,6 @@ class WorkpiecePoseBedFrameNode(Node):
             self._share_path('bed_config_path', 'config/cnc_bed.yaml')
         )
         self._object_corners = self._dimensions.object_corners_centered()
-        self._bridge = CvBridge()
         self._camera_matrix: Optional[np.ndarray] = None
         self._distortion: Optional[np.ndarray] = None
         self._tf_broadcaster = TransformBroadcaster(self)
@@ -156,8 +155,8 @@ class WorkpiecePoseBedFrameNode(Node):
             return
 
         try:
-            image = self._bridge.imgmsg_to_cv2(msg, 'bgr8')
-        except CvBridgeError:
+            image = image_msg_to_bgr(msg)
+        except (ValueError, RuntimeError):
             self._handle_detection_lost(msg.header.stamp)
             return
 
@@ -281,12 +280,8 @@ class WorkpiecePoseBedFrameNode(Node):
         self._detection_active = True
 
         debug = draw_detection_debug(image, detection, 'OK')
-        try:
-            debug_msg = self._bridge.cv2_to_imgmsg(debug, 'bgr8')
-            debug_msg.header = msg.header
-            self._debug_pub.publish(debug_msg)
-        except CvBridgeError:
-            pass
+        debug_msg = bgr_to_image_msg(debug, msg.header, msg.header.frame_id or OPTICAL_FRAME)
+        self._debug_pub.publish(debug_msg)
 
     @staticmethod
     def _rotation_to_quat(rotation_matrix: np.ndarray) -> list[float]:

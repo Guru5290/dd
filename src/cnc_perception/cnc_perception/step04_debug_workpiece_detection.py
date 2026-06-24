@@ -8,7 +8,6 @@ from pathlib import Path
 
 import cv2
 import rclpy
-from cv_bridge import CvBridge, CvBridgeError
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import Image
@@ -19,6 +18,7 @@ from cnc_perception.contour_detector import (
     draw_detection_debug,
     draw_diagnostic_overlay,
 )
+from cnc_perception.image_utils import image_msg_to_bgr
 from cnc_perception.workpiece_config import load_workpiece_config
 
 
@@ -33,7 +33,6 @@ class DebugWorkpieceDetectionNode(Node):
             self.get_parameter('output_dir').get_parameter_value().string_value
         )
         self._output_dir.mkdir(parents=True, exist_ok=True)
-        self._bridge = CvBridge()
         self._frame = 0
         self.create_subscription(Image, '/image_rect_color', self._image_cb, qos_profile_sensor_data)
         self.get_logger().info(
@@ -54,8 +53,8 @@ class DebugWorkpieceDetectionNode(Node):
         if self._frame % 30 != 0:
             return
         try:
-            image = self._bridge.imgmsg_to_cv2(msg, 'bgr8')
-        except CvBridgeError as exc:
+            image = image_msg_to_bgr(msg)
+        except (ValueError, RuntimeError) as exc:
             self.get_logger().warn(str(exc))
             return
 
