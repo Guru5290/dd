@@ -15,24 +15,25 @@ template:
   path: "package://cnc_perception/config/templates/workpiece_edge_template.png"
   match_threshold: 0.72
 
-# Tuned for 50 mm x 50 mm stock on a small CNC bed.
+# Detection tuned for 50 mm stock on Genmitsu 3018 with side-mounted camera.
 detection:
   blur_kernel_size: 5
   adaptive_block_size: 21
   adaptive_c: 3
-  canny_low: 70       #30   # has been changed to try and eliminate shadow detections.
-  canny_high: 150     #100
-  min_contour_area_px: 2000   #400
-  max_contour_area_px: 15000   #500000
-  aspect_ratio_tolerance: 0.10  #0.25
-  polygon_epsilon_ratio: 0.025
-  min_solidity: 0.75
+  canny_low: 35
+  canny_high: 110
+  min_contour_area_px: 600
+  max_contour_area_px: 120000
+  aspect_ratio_tolerance: 0.30
+  polygon_epsilon_ratio: 0.03
+  min_solidity: 0.65
+  min_interior_contrast: 4.0
   try_inverted_threshold: true
   try_otsu_threshold: true
 
 size_filter:
-  min_area_ratio: 0.001
-  max_area_ratio: 0.80
+  min_area_ratio: 0.0005
+  max_area_ratio: 0.85
 
 pose:
   use_ippe_for_planar: true

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import cv2
 import numpy as np
+from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import CameraInfo, Image
 
 
@@ -16,6 +17,14 @@ SUPPORTED_ENCODINGS = frozenset({
     'yuv422_yuy2',
     'uyvy',
 })
+
+
+QOS_IMAGE_SUB = QoSProfile(
+    reliability=ReliabilityPolicy.RELIABLE,
+    history=HistoryPolicy.KEEP_LAST,
+    depth=10,
+    durability=DurabilityPolicy.VOLATILE,
+)
 
 
 def _as_float_list(values) -> list[float]:

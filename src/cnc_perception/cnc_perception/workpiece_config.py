@@ -44,6 +44,7 @@ class DetectionConfig:
     aspect_ratio_tolerance: float
     polygon_epsilon_ratio: float
     min_solidity: float
+    min_interior_contrast: float
     min_area_ratio: float
     max_area_ratio: float
     try_inverted_threshold: bool
@@ -101,6 +102,7 @@ def load_workpiece_config(config_path: str) -> tuple[WorkpieceDimensions, Detect
         aspect_ratio_tolerance=float(detection.get('aspect_ratio_tolerance', 0.12)),
         polygon_epsilon_ratio=float(detection.get('polygon_epsilon_ratio', 0.02)),
         min_solidity=float(detection.get('min_solidity', 0.85)),
+        min_interior_contrast=float(detection.get('min_interior_contrast', 4.0)),
         min_area_ratio=float(size_filter.get('min_area_ratio', 0.02)),
         max_area_ratio=float(size_filter.get('max_area_ratio', 0.80)),
         try_inverted_threshold=bool(detection.get('try_inverted_threshold', True)),

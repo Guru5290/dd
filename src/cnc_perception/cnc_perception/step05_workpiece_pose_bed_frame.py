@@ -39,7 +39,7 @@ from cnc_perception.visualization import (
     make_delete_workpiece_markers,
     make_workpiece_markers_at_pose,
 )
-from cnc_perception.image_utils import bgr_to_image_msg, image_msg_to_bgr
+from cnc_perception.image_utils import QOS_IMAGE_SUB, bgr_to_image_msg, image_msg_to_bgr
 from cnc_perception.workpiece_config import load_workpiece_config
 
 
@@ -84,7 +84,7 @@ class WorkpiecePoseBedFrameNode(Node):
         self.create_subscription(
             CameraInfo, camera_info_topic, self._info_cb, qos_profile_sensor_data
         )
-        self.create_subscription(Image, image_topic, self._image_cb, qos_profile_sensor_data)
+        self.create_subscription(Image, image_topic, self._image_cb, QOS_IMAGE_SUB)
         self.create_timer(1.0, self._publish_bed_markers)
         self.get_logger().info(
             f'Step 05: Using {image_topic} (color) + {camera_info_topic} with rectified intrinsics.'
@@ -146,7 +146,6 @@ class WorkpiecePoseBedFrameNode(Node):
         if self._consecutive_failures % 30 == 1:
             self.get_logger().warn(
                 'Workpiece not detected (or rejected). Cube hidden until redetected.',
-                throttle_duration_sec=2.0,
             )
 
     def _image_cb(self, msg: Image) -> None:
@@ -162,6 +161,11 @@ class WorkpiecePoseBedFrameNode(Node):
 
         detection = detect_workpiece_corners(image, self._dimensions, self._detection)
         if detection is None:
+            if self._consecutive_failures % 30 == 1:
+                self.get_logger().warn(
+                    'Contour detection failed. Run step04 and check /tmp/cnc_perception_debug.',
+                    throttle_duration_sec=2.0,
+                )
             self._handle_detection_lost(msg.header.stamp)
             return
 

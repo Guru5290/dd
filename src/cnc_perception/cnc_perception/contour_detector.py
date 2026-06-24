@@ -150,9 +150,9 @@ def _score_contour(
     )
     score = float(solidity * (1.0 - aspect_error) * area_ratio)
 
-    if gray is not None:
+    if gray is not None and config.min_interior_contrast > 0.0:
         contrast = _interior_exterior_contrast(gray, contour)
-        if contrast < 8.0:
+        if contrast < config.min_interior_contrast:
             return -1.0, f'low interior contrast {contrast:.1f} (shadow/clutter?)'
         score *= min(1.0, contrast / 25.0)
 

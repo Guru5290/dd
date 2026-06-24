@@ -12,7 +12,7 @@ from sensor_msgs.msg import CameraInfo, Image
 
 from cnc_perception.bed_calibration import calibrate_bed_from_aruco, save_bed_calibration
 from cnc_perception.bed_config import load_bed_config
-from cnc_perception.image_utils import image_msg_to_bgr
+from cnc_perception.image_utils import QOS_IMAGE_SUB, image_msg_to_bgr
 
 
 class CalibrateBedOriginNode(Node):
@@ -28,7 +28,7 @@ class CalibrateBedOriginNode(Node):
         self._bed_config = load_bed_config(bed_path)
 
         self.create_subscription(CameraInfo, '/camera_info', self._info_cb, qos_profile_sensor_data)
-        self.create_subscription(Image, '/image_rect_color', self._image_cb, qos_profile_sensor_data)
+        self.create_subscription(Image, '/image_rect_color', self._image_cb, QOS_IMAGE_SUB)
 
         self.get_logger().info(
             'Step 02: Place ArUco marker (DICT_4X4_50 id=0) at bed origin. '

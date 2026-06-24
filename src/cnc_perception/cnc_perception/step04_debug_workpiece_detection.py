@@ -9,7 +9,6 @@ from pathlib import Path
 import cv2
 import rclpy
 from rclpy.node import Node
-from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import Image
 
 from cnc_perception.contour_detector import (
@@ -18,7 +17,7 @@ from cnc_perception.contour_detector import (
     draw_detection_debug,
     draw_diagnostic_overlay,
 )
-from cnc_perception.image_utils import image_msg_to_bgr
+from cnc_perception.image_utils import QOS_IMAGE_SUB, image_msg_to_bgr
 from cnc_perception.workpiece_config import load_workpiece_config
 
 
@@ -34,7 +33,7 @@ class DebugWorkpieceDetectionNode(Node):
         )
         self._output_dir.mkdir(parents=True, exist_ok=True)
         self._frame = 0
-        self.create_subscription(Image, '/image_rect_color', self._image_cb, qos_profile_sensor_data)
+        self.create_subscription(Image, '/image_rect_color', self._image_cb, QOS_IMAGE_SUB)
         self.get_logger().info(
             f'Step 04: workpiece {self._dimensions.width_m*1000:.0f}x'
             f'{self._dimensions.length_m*1000:.0f}x{self._dimensions.thickness_m*1000:.0f} mm. '
@@ -50,7 +49,7 @@ class DebugWorkpieceDetectionNode(Node):
 
     def _image_cb(self, msg: Image) -> None:
         self._frame += 1
-        if self._frame % 30 != 0:
+        if self._frame % 10 != 0:
             return
         try:
             image = image_msg_to_bgr(msg)

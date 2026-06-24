@@ -46,6 +46,53 @@ def camera_info_to_matrices(
     return camera_matrix, distortion
 
 
+def _reprojection_error(
+    object_points: np.ndarray,
+    image_points: np.ndarray,
+    rvec: np.ndarray,
+    tvec: np.ndarray,
+    camera_matrix: np.ndarray,
+    distortion: np.ndarray,
+) -> float:
+    projected, _ = cv2.projectPoints(object_points, rvec, tvec, camera_matrix, distortion)
+    return float(np.linalg.norm(projected.reshape(-1, 2) - image_points, axis=1).mean())
+
+
+def _pose_from_rvec_tvec(
+    rvec: np.ndarray,
+    tvec: np.ndarray,
+    object_points: np.ndarray,
+    image_points: np.ndarray,
+    camera_matrix: np.ndarray,
+    distortion: np.ndarray,
+) -> PoseEstimate:
+    rotation_matrix, _ = cv2.Rodrigues(rvec)
+    error = _reprojection_error(object_points, image_points, rvec, tvec, camera_matrix, distortion)
+    return PoseEstimate(
+        translation=tvec.reshape(3),
+        rotation_matrix=rotation_matrix,
+        reprojection_error=error,
+    )
+
+
+def _planar_pose_facing_score(rotation_matrix: np.ndarray, translation: np.ndarray) -> float:
+    """Prefer poses with the top face normal pointing toward the camera."""
+    if translation[2] <= 0.01:
+        return -100.0
+    normal = rotation_matrix[:, 2]
+    view_toward_camera = -translation / max(np.linalg.norm(translation), 1e-9)
+    return float(np.dot(normal, view_toward_camera))
+
+
+def _pick_best_planar_pose(candidates: list[PoseEstimate]) -> Optional[PoseEstimate]:
+    if not candidates:
+        return None
+    viable = [pose for pose in candidates if _planar_pose_facing_score(pose.rotation_matrix, pose.translation) > 0.0]
+    pool = viable if viable else candidates
+    pool.sort(key=lambda pose: pose.reprojection_error)
+    return pool[0]
+
+
 def solve_workpiece_pose(
     image_corners: np.ndarray,
     object_corners: list[list[float]],
@@ -58,31 +105,46 @@ def solve_workpiece_pose(
 
     object_points = np.array(object_corners, dtype=np.float64)
     image_points = np.asarray(image_corners, dtype=np.float64)
+    candidates: list[PoseEstimate] = []
 
-    flags = cv2.SOLVEPNP_IPPE if use_ippe_for_planar else cv2.SOLVEPNP_ITERATIVE
-    try:
-        success, rvec, tvec = cv2.solvePnP(
-            object_points,
-            image_points,
-            camera_matrix,
-            distortion,
-            flags=flags,
+    if use_ippe_for_planar and hasattr(cv2, 'solvePnPGeneric'):
+        try:
+            success, rvecs, tvecs, _ = cv2.solvePnPGeneric(
+                object_points,
+                image_points,
+                camera_matrix,
+                distortion,
+                flags=cv2.SOLVEPNP_IPPE,
+            )
+            if success:
+                for rvec, tvec in zip(rvecs, tvecs):
+                    candidates.append(
+                        _pose_from_rvec_tvec(
+                            rvec, tvec, object_points, image_points, camera_matrix, distortion
+                        )
+                    )
+        except cv2.error:
+            candidates = []
+
+    if not candidates:
+        flags = cv2.SOLVEPNP_IPPE if use_ippe_for_planar else cv2.SOLVEPNP_ITERATIVE
+        try:
+            success, rvec, tvec = cv2.solvePnP(
+                object_points,
+                image_points,
+                camera_matrix,
+                distortion,
+                flags=flags,
+            )
+        except cv2.error:
+            return None
+        if not success:
+            return None
+        candidates.append(
+            _pose_from_rvec_tvec(rvec, tvec, object_points, image_points, camera_matrix, distortion)
         )
-    except cv2.error:
-        return None
 
-    if not success:
-        return None
-
-    projected, _ = cv2.projectPoints(object_points, rvec, tvec, camera_matrix, distortion)
-    error = float(np.linalg.norm(projected.reshape(-1, 2) - image_points, axis=1).mean())
-    rotation_matrix, _ = cv2.Rodrigues(rvec)
-
-    return PoseEstimate(
-        translation=tvec.reshape(3),
-        rotation_matrix=rotation_matrix,
-        reprojection_error=error,
-    )
+    return _pick_best_planar_pose(candidates)
 
 
 def rotation_matrix_to_quaternion(rotation_matrix: np.ndarray) -> Quaternion:
