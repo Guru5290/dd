@@ -33,6 +33,7 @@ setup(
             'step05_workpiece_pose_bed_frame = cnc_perception.step05_workpiece_pose_bed_frame:main',
             'step06_check_placement = cnc_perception.step06_check_placement:main',
             'step00_generate_aruco_marker = cnc_perception.step00_generate_aruco_marker:main',
+            'rectify_image_node = cnc_perception.rectify_image_node:main',
         ],
     },
 )

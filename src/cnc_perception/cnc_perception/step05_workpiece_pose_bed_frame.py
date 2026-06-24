@@ -191,7 +191,7 @@ class WorkpiecePoseBedFrameNode(Node):
         self._consecutive_failures = 0
 
         stamp = msg.header.stamp
-        optical_frame = msg.header.frame_id or OPTICAL_FRAME
+        optical_frame = OPTICAL_FRAME
 
         t_optical_workpiece = transform_to_matrix(pose.translation, self._rotation_to_quat(pose.rotation_matrix))
         t_link_workpiece = transform_optical_to_link() @ t_optical_workpiece

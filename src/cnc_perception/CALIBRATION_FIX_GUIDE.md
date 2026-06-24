@@ -83,12 +83,38 @@ source install/setup.bash
 ros2 launch cnc_perception image_proc_pipeline.launch.py
 ```
 
-Verify:
+If the camera is not on `/dev/video0`:
 ```bash
+ros2 launch cnc_perception image_proc_pipeline.launch.py video_device:=/dev/video2
+```
+
+**Diagnose in order** (while launch is running in another terminal):
+
+```bash
+# 1) Is the camera driver publishing?
+ros2 topic list | grep image
+ros2 topic hz /image_raw
+
+# 2) Is image_proc running?
+ros2 node list | grep -E 'camera|rectify|image_proc'
+
+# 3) Rectified color topic (after fix: RectifyNode -> /image_rect_color)
 ros2 topic hz /image_rect_color
+```
+
+If `/image_raw` has no data, fix the camera first (see troubleshooting below).  
+If `/image_raw` works but `/image_rect_color` does not:
+```bash
+ros2 node list | grep rectifier
+ros2 topic hz /camera_info_raw
+ros2 topic hz /camera_info
+```
+The launch file now uses **`rectify_image_node`** (OpenCV) instead of `image_proc`. Rebuild and restart the launch.
+
+Verify rectified camera info (distortion should be zero):
+```bash
 ros2 topic echo /camera_info --once
 ```
-Distortion coefficients `d` should be **all zeros** (rectified).
 
 Optional color preview:
 ```bash
@@ -219,6 +245,49 @@ With step03 + RViz running (no workpiece needed):
 | Cube offset from part | Shadow in contour | Improve lighting; tune canny thresholds |
 | Ghost cube after removal | Old step05 | Use updated step05 (DELETE markers) |
 | `Waiting for cnc_bed_frame TF` | step03 not running | Start step03 |
+| `/image_rect_color` not published | usb_cam dead or wrong image_proc node | See camera troubleshooting below |
+
+---
+
+## Camera troubleshooting (`/image_rect_color` missing)
+
+**Step A — Find the camera device**
+```bash
+v4l2-ctl --list-devices
+ls -l /dev/video*
+```
+Use the device that lists your ELP camera (often `/dev/video0` or `/dev/video2`).
+
+**Step B — Test permissions**
+```bash
+groups   # should include 'video'
+# if not:
+sudo usermod -aG video $USER
+# then log out and back in
+```
+
+**Step C — While launch is running, check `/image_raw` first**
+```bash
+ros2 topic hz /image_raw
+```
+- **No `/image_raw`**: usb_cam failed. Read the launch terminal for errors (`Cannot open device`, wrong format, etc.).
+- **`/image_raw` OK, no `/image_rect_color`**: rebuild after pull, ensure `ros-jazzy-image-proc` is installed, check `ros2 node list` for `rectify`.
+
+**Step D — Launch with correct device**
+```bash
+ros2 launch cnc_perception image_proc_pipeline.launch.py video_device:=/dev/videoX
+```
+
+**Step E — Manual fallback (two terminals)**
+```bash
+# Terminal A
+ros2 run usb_cam usb_cam_node_exe --ros-args \
+  --params-file $(ros2 pkg prefix cnc_perception)/share/cnc_perception/config/camera_params.yaml
+
+# Terminal B
+ros2 run image_proc rectify_node --ros-args \
+  -r image:=/image_raw -r camera_info:=/camera_info -r image_rect:=/image_rect_color
+```
 
 ---
 

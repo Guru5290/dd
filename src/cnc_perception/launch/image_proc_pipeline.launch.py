@@ -1,58 +1,52 @@
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription
-from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch_ros.actions import ComposableNodeContainer, Node
-from launch_ros.descriptions import ComposableNode
+from launch.actions import DeclareLaunchArgument
+from launch.substitutions import LaunchConfiguration
+from launch_ros.actions import Node
 from ament_index_python.packages import get_package_share_directory
 import os
 
 
 def generate_launch_description():
     pkg_share = get_package_share_directory('cnc_perception')
-    camera_info_url = 'file://' + os.path.join(pkg_share, 'config', 'camera_info.yaml')
+    camera_params = os.path.join(pkg_share, 'config', 'camera_params.yaml')
 
-    image_proc_share = get_package_share_directory('image_proc')
-    image_proc_launch = os.path.join(image_proc_share, 'launch', 'image_proc.launch.py')
+    video_device_arg = DeclareLaunchArgument(
+        'video_device',
+        default_value='/dev/video0',
+        description='V4L2 device path (try v4l2-ctl --list-devices if /dev/video0 fails)',
+    )
+
+    usb_cam_node = Node(
+        package='usb_cam',
+        executable='usb_cam_node_exe',
+        name='camera_driver',
+        output='screen',
+        parameters=[
+            camera_params,
+            {'video_device': LaunchConfiguration('video_device')},
+        ],
+        remappings=[
+            ('image_raw', '/image_raw'),
+            ('camera_info', '/camera_info_raw'),
+        ],
+    )
+
+    # Built-in rectifier (OpenCV) — avoids image_proc QoS / composable load issues on Jazzy.
+    rectifier_node = Node(
+        package='cnc_perception',
+        executable='rectify_image_node',
+        name='image_rectifier',
+        output='screen',
+        parameters=[{
+            'input_topic': '/image_raw',
+            'output_topic': '/image_rect_color',
+            'raw_camera_info_topic': '/camera_info_raw',
+            'camera_info_topic': '/camera_info',
+        }],
+    )
 
     return LaunchDescription([
-        Node(
-            package='usb_cam',
-            executable='usb_cam_node_exe',
-            name='camera_driver',
-            parameters=[{
-                'camera_info_url': camera_info_url,
-                'image_width': 640,
-                'image_height': 480,
-                'framerate': 30.0,
-                'pixel_format': 'yuyv',
-                'video_device': '/dev/video0',
-                'frame_id': 'camera_link',
-                'camera_name': 'narrow_stereo',
-            }],
-            remappings=[
-                ('image_raw', '/image_raw'),
-                ('camera_info', '/camera_info'),
-            ],
-            output='screen',
-        ),
-        ComposableNodeContainer(
-            name='image_proc_container',
-            namespace='',
-            package='rclcpp_components',
-            executable='component_container',
-            composable_node_descriptions=[
-                ComposableNode(
-                    package='image_proc',
-                    plugin='image_proc::ImageProcNode',
-                    name='image_proc',
-                    remappings=[
-                        ('image', '/image_raw'),
-                        ('camera_info', '/camera_info'),
-                        ('image_rect', '/image_rect'),
-                        ('image_rect_color', '/image_rect_color'),
-                    ],
-                ),
-            ],
-            output='screen',
-        ),
+        video_device_arg,
+        usb_cam_node,
+        rectifier_node,
     ])
