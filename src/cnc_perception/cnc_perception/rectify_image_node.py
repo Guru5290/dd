@@ -18,6 +18,8 @@ from cnc_perception.image_utils import (
     bgr_to_image_msg,
     distortion_from_camera_info,
     image_msg_to_bgr,
+    rectification_matrix_from_camera_info,
+    zero_distortion_list,
 )
 
 
@@ -83,9 +85,9 @@ class RectifyImageNode(Node):
             rect_info.height = msg.height
             rect_info.width = msg.width
             rect_info.distortion_model = msg.distortion_model or 'plumb_bob'
-            rect_info.d = [0.0] * max(len(msg.d), 5)
+            rect_info.d = zero_distortion_list(msg)
             rect_info.k = new_camera_matrix.reshape(-1).tolist()
-            rect_info.r = list(msg.r) if msg.r else [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
+            rect_info.r = rectification_matrix_from_camera_info(msg)
             rect_info.p = [
                 new_camera_matrix[0, 0], 0.0, new_camera_matrix[0, 2], 0.0,
                 0.0, new_camera_matrix[1, 1], new_camera_matrix[1, 2], 0.0,

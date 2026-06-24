@@ -7,6 +7,7 @@ from cnc_perception.image_utils import (
     bgr_to_image_msg,
     distortion_from_camera_info,
     image_msg_to_bgr,
+    rectification_matrix_from_camera_info,
 )
 
 
@@ -17,6 +18,13 @@ def test_distortion_defaults_to_zeros() -> None:
     coeffs = distortion_from_camera_info(msg)
     assert coeffs.shape == (5, 1)
     assert np.allclose(coeffs, 0.0)
+
+
+def test_rectification_matrix_handles_numpy_like_r() -> None:
+    msg = CameraInfo()
+    msg.r = np.eye(3, dtype=np.float64).reshape(-1)
+    matrix = rectification_matrix_from_camera_info(msg)
+    assert len(matrix) == 9
 
 
 def test_bgr_round_trip() -> None:

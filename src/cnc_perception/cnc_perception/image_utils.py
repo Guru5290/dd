@@ -18,11 +18,27 @@ SUPPORTED_ENCODINGS = frozenset({
 })
 
 
+def _as_float_list(values) -> list[float]:
+    if values is None:
+        return []
+    return [float(v) for v in values]
+
+
+def zero_distortion_list(msg: CameraInfo, min_length: int = 5) -> list[float]:
+    return [0.0] * max(len(_as_float_list(msg.d)), min_length)
+
+
+def rectification_matrix_from_camera_info(msg: CameraInfo) -> list[float]:
+    r = _as_float_list(msg.r)
+    if len(r) == 9:
+        return r
+    return [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
+
+
 def distortion_from_camera_info(msg: CameraInfo) -> np.ndarray:
-    if msg.d:
-        coeffs = np.array(msg.d, dtype=np.float64).reshape(-1, 1)
-        if coeffs.size > 0:
-            return coeffs
+    coeffs = _as_float_list(msg.d)
+    if len(coeffs) > 0:
+        return np.array(coeffs, dtype=np.float64).reshape(-1, 1)
     if msg.distortion_model == 'plumb_bob':
         return np.zeros((5, 1), dtype=np.float64)
     return np.zeros((4, 1), dtype=np.float64)
