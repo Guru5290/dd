@@ -10,7 +10,13 @@ import cv2
 import numpy as np
 import rclpy
 from rclpy.node import Node
-from rclpy.qos import qos_profile_sensor_data
+from rclpy.qos import (
+    DurabilityPolicy,
+    HistoryPolicy,
+    QoSProfile,
+    ReliabilityPolicy,
+    qos_profile_sensor_data,
+)
 from sensor_msgs.msg import CameraInfo, Image
 
 from cnc_perception.camera_frames import OPTICAL_FRAME
@@ -20,6 +26,16 @@ from cnc_perception.image_utils import (
     image_msg_to_bgr,
     rectification_matrix_from_camera_info,
     zero_distortion_list,
+)
+
+
+# Reliable output so RViz (default Reliable subscriber) receives images.
+# Perception nodes may subscribe with sensor_data (Best Effort) — still compatible.
+QOS_PUBLISH = QoSProfile(
+    reliability=ReliabilityPolicy.RELIABLE,
+    history=HistoryPolicy.KEEP_LAST,
+    depth=10,
+    durability=DurabilityPolicy.VOLATILE,
 )
 
 
@@ -43,8 +59,8 @@ class RectifyImageNode(Node):
         self._rect_camera_info: Optional[CameraInfo] = None
         self._warned_waiting_for_info = False
 
-        self._image_pub = self.create_publisher(Image, output_topic, qos_profile_sensor_data)
-        self._info_pub = self.create_publisher(CameraInfo, info_topic, qos_profile_sensor_data)
+        self._image_pub = self.create_publisher(Image, output_topic, QOS_PUBLISH)
+        self._info_pub = self.create_publisher(CameraInfo, info_topic, QOS_PUBLISH)
         self.create_subscription(CameraInfo, raw_info_topic, self._info_cb, qos_profile_sensor_data)
         self.create_subscription(Image, input_topic, self._image_cb, qos_profile_sensor_data)
 
