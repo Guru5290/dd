@@ -22,6 +22,27 @@ def _apply_roi(image_bgr: np.ndarray, roi: DetectionRoi) -> tuple[np.ndarray, tu
     return image_bgr[y1:y2, x1:x2].copy(), (x1, y1)
 
 
+def _offset_contour_to_full_image(
+    contour: np.ndarray,
+    offset_x: int,
+    offset_y: int,
+) -> np.ndarray:
+    """Shift contour from ROI/cropped coords to full image; OpenCV-safe int32 Nx1x2."""
+    if contour is None or contour.size == 0 or len(contour) < 3:
+        return np.empty((0, 1, 2), dtype=np.int32)
+    shifted = np.ascontiguousarray(contour, dtype=np.int32).reshape(-1, 1, 2).copy()
+    shifted[:, 0, 0] += int(offset_x)
+    shifted[:, 0, 1] += int(offset_y)
+    return shifted
+
+
+def _contour_for_draw(contour: np.ndarray, corners: np.ndarray) -> np.ndarray:
+    """Return a drawable contour, falling back to the quad corners if needed."""
+    if contour is not None and contour.size > 0 and len(contour) >= 3:
+        return np.ascontiguousarray(contour, dtype=np.int32).reshape(-1, 1, 2)
+    return np.ascontiguousarray(corners, dtype=np.int32).reshape(-1, 1, 2)
+
+
 def _interior_exterior_contrast(gray: np.ndarray, contour: np.ndarray) -> float:
     """Higher when contour interior is darker than the local background (typical workpiece on metal bed)."""
     mask = np.zeros(gray.shape, dtype=np.uint8)
@@ -196,11 +217,12 @@ def diagnose_contours(
             approx = cv2.approxPolyDP(contour, config.polygon_epsilon_ratio * peri, True)
             if len(approx) == 4:
                 corners = _order_corners_clockwise(approx.reshape(4, 2).astype(np.float32))
-                offset = np.array([offset_x, offset_y], dtype=np.float32)
-                contour_full = contour + offset.reshape(1, 1, 2)
+                corners[:, 0] += float(offset_x)
+                corners[:, 1] += float(offset_y)
+                contour_full = _offset_contour_to_full_image(contour, offset_x, offset_y)
                 candidates.append(
                     ContourCandidate(
-                        corners=corners + offset,
+                        corners=corners,
                         contour=contour_full,
                         score=score,
                         reason=f'{variant_name}: {reason}',
@@ -295,8 +317,9 @@ def draw_diagnostic_overlay(
     debug = image_bgr.copy()
     for index, candidate in enumerate(candidates[:5]):
         color = (0, 255, 0) if candidate.score > 0 else (0, 0, 255)
-        cv2.drawContours(debug, [candidate.contour], -1, color, 2)
-        moment = cv2.moments(candidate.contour)
+        draw_contour = _contour_for_draw(candidate.contour, candidate.corners)
+        cv2.drawContours(debug, [draw_contour], -1, color, 2)
+        moment = cv2.moments(draw_contour)
         if moment['m00'] > 0:
             cx = int(moment['m10'] / moment['m00'])
             cy = int(moment['m01'] / moment['m00'])
