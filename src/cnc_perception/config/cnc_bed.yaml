@@ -21,8 +21,9 @@ reference_marker:
   # ArUco +Y points down on the print; bed +Y points into the bed — keep true.
   flip_marker_y: true
 
-# Target placement for workpiece center on the bed (meters).
+# Target placement for step06 placement check (optional RViz marker).
 target_placement:
+  show_target_marker: false
   x_m: 0.100
   y_m: 0.100
   z_m: 0.0

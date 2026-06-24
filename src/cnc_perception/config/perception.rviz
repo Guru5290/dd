@@ -43,7 +43,7 @@ Visualization Manager:
       Name: CNC Bed
       Namespaces:
         cnc_bed: true
-        target: true
+        target: false
       Topic:
         Depth: 5
         Durability Policy: Volatile

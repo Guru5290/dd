@@ -103,14 +103,16 @@ def make_bed_markers(stamp, frame_id: str, bed_config: BedConfig) -> MarkerArray
 
     markers.markers.append(axes)
 
-    target = _make_target_marker(stamp, frame_id, bed_config.target, marker_id, ok=True)
-    markers.markers.append(target)
+    if bed_config.show_target_placement:
+        target = _make_target_marker(stamp, frame_id, bed_config.target, marker_id, ok=True)
+        markers.markers.append(target)
+        marker_id += 1
 
     label = Marker()
     label.header.stamp = stamp
     label.header.frame_id = frame_id
     label.ns = 'cnc_bed'
-    label.id = marker_id + 1
+    label.id = marker_id
     label.type = Marker.TEXT_VIEW_FACING
     label.action = Marker.ADD
     label.pose = _identity_pose()
@@ -120,8 +122,12 @@ def make_bed_markers(stamp, frame_id: str, bed_config: BedConfig) -> MarkerArray
     label.scale.z = 0.025
     label.color = _color(1.0, 1.0, 1.0, 1.0)
     label.text = (
-        f'Bed origin (0,0,0)  L={length*1000:.0f}mm W={width*1000:.0f}mm  '
-        f'Target=({bed_config.target.x_m*1000:.0f},{bed_config.target.y_m*1000:.0f})mm'
+        f'Bed origin (0,0,0)  L={length*1000:.0f}mm W={width*1000:.0f}mm'
+        + (
+            f'  Target=({bed_config.target.x_m*1000:.0f},{bed_config.target.y_m*1000:.0f})mm'
+            if bed_config.show_target_placement
+            else ''
+        )
     )
     markers.markers.append(label)
 

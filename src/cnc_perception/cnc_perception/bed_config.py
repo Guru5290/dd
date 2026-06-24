@@ -41,6 +41,7 @@ class BedConfig:
     bed: BedDimensions
     marker: ReferenceMarker
     target: TargetPlacement
+    show_target_placement: bool
     mesh_enabled: bool
     mesh_stl_path: str
     mesh_scale: float
@@ -82,6 +83,7 @@ def load_bed_config(config_path: str) -> BedConfig:
             tolerance_z_mm=float(tol.get('z_mm', 1.5)),
             tolerance_yaw_deg=float(tol.get('yaw_deg', 3.0)),
         ),
+        show_target_placement=bool(target.get('show_target_marker', False)),
         mesh_enabled=bool(mesh.get('enabled', False)),
         mesh_stl_path=str(mesh.get('stl_path', '')),
         mesh_scale=float(mesh.get('scale', 1.0)),
