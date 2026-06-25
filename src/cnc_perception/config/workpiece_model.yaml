@@ -36,13 +36,13 @@ detection:
     enabled: false
     x_min_ratio: 0.0
     y_min_ratio: 0.0
-    x_max_ratio: 1.0
-    y_max_ratio: 1.0
+    x_max_ratio: 0.72 #1.0
+    y_max_ratio: 1.0  
 
 size_filter:
-  min_area_ratio: 0.0002
+  min_area_ratio: 0.0005 #0.0002
   # Reject huge merged part+shadow blobs (50 mm part is usually <25% of image).
-  max_area_ratio: 0.30
+  max_area_ratio: 0.08 #0.30
 
 pose:
   use_ippe_for_planar: true
