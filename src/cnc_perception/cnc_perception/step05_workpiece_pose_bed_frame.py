@@ -10,6 +10,7 @@ import cv2
 import numpy as np
 import rclpy
 from rclpy import duration
+from rclpy.time import Time
 from geometry_msgs.msg import PoseStamped, TransformStamped
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
@@ -119,28 +120,31 @@ class WorkpiecePoseBedFrameNode(Node):
         self._bed_marker_pub.publish(make_bed_markers(stamp, 'cnc_bed_frame', self._bed_config))
 
     def _lookup_bed_from_link(self, stamp) -> Optional[np.ndarray]:
-        try:
-            tf_msg = self._tf_buffer.lookup_transform(
-                'cnc_bed_frame',
-                LINK_FRAME,
-                stamp,
-                timeout=duration.Duration(seconds=0.05),
+        # Static TF from step03 — use latest time; image stamps often fail lookup.
+        for query_time in (Time(), stamp):
+            try:
+                tf_msg = self._tf_buffer.lookup_transform(
+                    'cnc_bed_frame',
+                    LINK_FRAME,
+                    query_time,
+                    timeout=duration.Duration(seconds=0.2),
+                )
+            except Exception:
+                continue
+            return transform_to_matrix(
+                [
+                    tf_msg.transform.translation.x,
+                    tf_msg.transform.translation.y,
+                    tf_msg.transform.translation.z,
+                ],
+                [
+                    tf_msg.transform.rotation.x,
+                    tf_msg.transform.rotation.y,
+                    tf_msg.transform.rotation.z,
+                    tf_msg.transform.rotation.w,
+                ],
             )
-        except Exception:
-            return None
-        return transform_to_matrix(
-            [
-                tf_msg.transform.translation.x,
-                tf_msg.transform.translation.y,
-                tf_msg.transform.translation.z,
-            ],
-            [
-                tf_msg.transform.rotation.x,
-                tf_msg.transform.rotation.y,
-                tf_msg.transform.rotation.z,
-                tf_msg.transform.rotation.w,
-            ],
-        )
+        return None
 
     def _handle_detection_lost(self, stamp) -> None:
         self._consecutive_failures += 1
@@ -248,10 +252,18 @@ class WorkpiecePoseBedFrameNode(Node):
             self._bed_config.bed.width_m,
             margin_m=bed_margin,
         ):
+            x_mm = float(t_bed_workpiece[0, 3]) * 1000.0
+            y_mm = float(t_bed_workpiece[1, 3]) * 1000.0
+            z_mm = float(t_bed_workpiece[2, 3]) * 1000.0
             self.get_logger().warn(
-                'Workpiece center outside CNC bed — not publishing bed pose.',
+                f'Workpiece center outside CNC bed — not publishing bed pose. '
+                f'Computed X={x_mm:.1f} mm Y={y_mm:.1f} mm Z={z_mm:.1f} mm '
+                f'(valid X:[{bed_margin*1000:.0f}, {(self._bed_config.bed.length_m - bed_margin)*1000:.0f}] '
+                f'Y:[{bed_margin*1000:.0f}, {(self._bed_config.bed.width_m - bed_margin)*1000:.0f}]). '
+                'Re-run step02 if marker moved or bed axes wrong in RViz.',
                 throttle_duration_sec=2.0,
             )
+            self._publish_debug_frame(image, msg, detection, f'OFF BED {x_mm:.0f},{y_mm:.0f}')
             self._handle_detection_lost(stamp)
             return
 
