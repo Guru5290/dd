@@ -9,6 +9,8 @@ import cv2
 import numpy as np
 from geometry_msgs.msg import Pose, Quaternion
 
+from cnc_perception.transform_utils import surface_normal_tilt_deg
+
 
 @dataclass
 class PoseEstimate:
@@ -101,20 +103,50 @@ def _pick_best_planar_pose(candidates: list[PoseEstimate]) -> Optional[PoseEstim
     return pool[0]
 
 
-def solve_workpiece_pose(
-    image_corners: np.ndarray,
-    object_corners: list[list[float]],
+def _pose_to_bed_matrix(pose: PoseEstimate, t_bed_from_optical: np.ndarray) -> np.ndarray:
+    matrix = np.eye(4, dtype=np.float64)
+    matrix[:3, :3] = pose.rotation_matrix
+    matrix[:3, 3] = pose.translation
+    return t_bed_from_optical @ matrix
+
+
+def _bed_plausibility_score(
+    t_bed_workpiece: np.ndarray,
+    thickness_m: float,
+    max_tilt_deg: float,
+) -> float:
+    """Lower is better. Penalize wrong height, negative Z, and high tilt."""
+    z_m = float(t_bed_workpiece[2, 3])
+    tilt_deg = surface_normal_tilt_deg(t_bed_workpiece[:3, :3])
+    z_err_mm = abs(z_m - thickness_m) * 1000.0
+    if z_m < 0.0:
+        z_err_mm += 500.0
+    tilt_penalty = max(0.0, tilt_deg - max_tilt_deg) * 3.0
+    return z_err_mm + tilt_penalty
+
+
+def _image_corner_permutations(image_corners: np.ndarray, try_rotations: bool) -> list[np.ndarray]:
+    base = np.asarray(image_corners, dtype=np.float64)
+    if not try_rotations:
+        return [base]
+    perms = [base]
+    for shift in range(1, 4):
+        perms.append(np.roll(base, shift, axis=0))
+    reversed_corners = base[::-1].copy()
+    perms.append(reversed_corners)
+    for shift in range(1, 4):
+        perms.append(np.roll(reversed_corners, shift, axis=0))
+    return perms
+
+
+def _collect_planar_pose_candidates(
+    image_points: np.ndarray,
+    object_points: np.ndarray,
     camera_matrix: np.ndarray,
     distortion: np.ndarray,
-    use_ippe_for_planar: bool = True,
-) -> Optional[PoseEstimate]:
-    if image_corners is None or len(image_corners) != 4:
-        return None
-
-    object_points = np.array(object_corners, dtype=np.float64)
-    image_points = np.asarray(image_corners, dtype=np.float64)
+    use_ippe_for_planar: bool,
+) -> list[PoseEstimate]:
     candidates: list[PoseEstimate] = []
-
     if use_ippe_for_planar and hasattr(cv2, 'solvePnPGeneric'):
         try:
             success, rvecs, tvecs, _ = cv2.solvePnPGeneric(
@@ -145,13 +177,68 @@ def solve_workpiece_pose(
                 flags=flags,
             )
         except cv2.error:
-            return None
-        if not success:
-            return None
-        candidates.append(
-            _pose_from_rvec_tvec(rvec, tvec, object_points, image_points, camera_matrix, distortion)
-        )
+            return []
+        if success:
+            candidates.append(
+                _pose_from_rvec_tvec(rvec, tvec, object_points, image_points, camera_matrix, distortion)
+            )
+    return candidates
 
+
+def solve_workpiece_pose_in_bed_frame(
+    image_corners: np.ndarray,
+    object_corners: list[list[float]],
+    camera_matrix: np.ndarray,
+    distortion: np.ndarray,
+    t_bed_from_optical: np.ndarray,
+    thickness_m: float,
+    *,
+    use_ippe_for_planar: bool = True,
+    max_tilt_deg: float = 35.0,
+    try_corner_permutations: bool = True,
+) -> Optional[PoseEstimate]:
+    """
+    Solve pose and pick the IPPE / corner assignment that is physically plausible
+    on the CNC bed (Z ~= thickness, low tilt). Required for square stock where IPPE
+    ambiguity and corner order can yield low reprojection but ~80 deg wrong tilt.
+    """
+    if image_corners is None or len(image_corners) != 4:
+        return None
+
+    object_points = np.array(object_corners, dtype=np.float64)
+    best_pose: Optional[PoseEstimate] = None
+    best_score = float('inf')
+
+    for image_points in _image_corner_permutations(image_corners, try_corner_permutations):
+        for pose in _collect_planar_pose_candidates(
+            image_points, object_points, camera_matrix, distortion, use_ippe_for_planar
+        ):
+            t_bed = _pose_to_bed_matrix(pose, t_bed_from_optical)
+            score = _bed_plausibility_score(t_bed, thickness_m, max_tilt_deg) + pose.reprojection_error
+            if score < best_score:
+                best_score = score
+                best_pose = pose
+
+    return best_pose
+
+
+def solve_workpiece_pose(
+    image_corners: np.ndarray,
+    object_corners: list[list[float]],
+    camera_matrix: np.ndarray,
+    distortion: np.ndarray,
+    use_ippe_for_planar: bool = True,
+) -> Optional[PoseEstimate]:
+    if image_corners is None or len(image_corners) != 4:
+        return None
+
+    object_points = np.array(object_corners, dtype=np.float64)
+    image_points = np.asarray(image_corners, dtype=np.float64)
+    candidates = _collect_planar_pose_candidates(
+        image_points, object_points, camera_matrix, distortion, use_ippe_for_planar
+    )
+    if not candidates:
+        return None
     return _pick_best_planar_pose(candidates)
 
 

@@ -33,7 +33,7 @@ from cnc_perception.pose_solver import (
     pose_estimate_to_geometry_pose,
     rotation_matrix_to_quaternion,
     smooth_pose,
-    solve_workpiece_pose,
+    solve_workpiece_pose_in_bed_frame,
 )
 from cnc_perception.transform_utils import (
     is_pose_center_on_bed,
@@ -59,7 +59,7 @@ class WorkpiecePoseBedFrameNode(Node):
         self.declare_parameter('max_reprojection_error_px', 10.0)
         self.declare_parameter('bed_margin_m', 0.005)
         self.declare_parameter('max_surface_tilt_deg', 35.0)
-        self.declare_parameter('publish_pose_only_when_flat', False)
+        self.declare_parameter('publish_pose_only_when_flat', True)
         self.declare_parameter('use_rectified_camera_info', True)
 
         self._dimensions, self._detection = load_workpiece_config(
@@ -188,15 +188,33 @@ class WorkpiecePoseBedFrameNode(Node):
             self._handle_detection_lost(msg.header.stamp)
             return
 
-        pose = solve_workpiece_pose(
+        stamp = msg.header.stamp
+        t_bed_link = self._lookup_bed_from_link(stamp)
+        if t_bed_link is None:
+            self.get_logger().warn(
+                'Waiting for TF cnc_bed_frame <- camera_link. Run step03_publish_bed_tf.',
+                throttle_duration_sec=3.0,
+            )
+            self._publish_debug_frame(image, msg, detection, 'NO TF')
+            self._handle_detection_lost(stamp)
+            return
+
+        t_bed_from_optical = t_bed_link @ transform_optical_to_link()
+        max_tilt = self.get_parameter('max_surface_tilt_deg').get_parameter_value().double_value
+
+        pose = solve_workpiece_pose_in_bed_frame(
             detection.corners,
             self._object_corners,
             self._camera_matrix,
             self._distortion,
+            t_bed_from_optical,
+            self._dimensions.thickness_m,
             use_ippe_for_planar=self._detection.use_ippe_for_planar,
+            max_tilt_deg=max_tilt,
+            try_corner_permutations=abs(self._dimensions.aspect_ratio - 1.0) < 0.05,
         )
         if pose is None:
-            self._handle_detection_lost(msg.header.stamp)
+            self._handle_detection_lost(stamp)
             return
 
         max_error = self.get_parameter('max_reprojection_error_px').get_parameter_value().double_value
@@ -205,14 +223,13 @@ class WorkpiecePoseBedFrameNode(Node):
                 f'Reprojection error {pose.reprojection_error:.1f}px > {max_error:.1f}px',
                 throttle_duration_sec=2.0,
             )
-            self._handle_detection_lost(msg.header.stamp)
+            self._handle_detection_lost(stamp)
             return
 
         pose = smooth_pose(self._latest_pose, pose, self._detection.pose_smoothing_alpha)
         self._latest_pose = pose
         self._consecutive_failures = 0
 
-        stamp = msg.header.stamp
         optical_frame = OPTICAL_FRAME
 
         t_optical_workpiece = transform_to_matrix(pose.translation, self._rotation_to_quat(pose.rotation_matrix))
@@ -233,18 +250,8 @@ class WorkpiecePoseBedFrameNode(Node):
         tf_optical_wp.transform.translation.z = float(pose.translation[2])
         tf_optical_wp.transform.rotation = rotation_matrix_to_quaternion(pose.rotation_matrix)
 
-        t_bed_link = self._lookup_bed_from_link(stamp)
-        if t_bed_link is None:
-            self.get_logger().warn(
-                'Waiting for TF cnc_bed_frame <- camera_link. Run step03_publish_bed_tf.',
-                throttle_duration_sec=3.0,
-            )
-            self._tf_broadcaster.sendTransform(tf_optical_wp)
-            return
-
         t_bed_workpiece = t_bed_link @ t_link_workpiece
         bed_margin = self.get_parameter('bed_margin_m').get_parameter_value().double_value
-        max_tilt = self.get_parameter('max_surface_tilt_deg').get_parameter_value().double_value
 
         if not is_pose_center_on_bed(
             t_bed_workpiece,
