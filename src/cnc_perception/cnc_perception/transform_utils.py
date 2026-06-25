@@ -133,9 +133,7 @@ def surface_normal_tilt_deg(rotation: np.ndarray) -> float:
 
 
 def flatten_transform_to_bed_plane(t_bed_workpiece: np.ndarray, thickness_m: float) -> np.ndarray:
-    """
-    Constrain a flat workpiece on the bed: keep X, Y, yaw; Z = top-face height; tilt = 0.
-    """
+    """Keep X, Y, yaw; force Z = top-face height and tilt = 0 for flat stock."""
     yaw_rad = math.radians(yaw_from_matrix(t_bed_workpiece[:3, :3]))
     cos_yaw = math.cos(yaw_rad)
     sin_yaw = math.sin(yaw_rad)
@@ -159,6 +157,7 @@ def smooth_flat_bed_transform(
     previous: Optional[np.ndarray],
     current: np.ndarray,
     alpha: float,
+    yaw_alpha: Optional[float] = None,
 ) -> np.ndarray:
     """Low-pass filter X/Y/Z and yaw for a bed-flat workpiece transform."""
     if previous is None or alpha <= 0.0:
@@ -166,13 +165,14 @@ def smooth_flat_bed_transform(
     if alpha >= 1.0:
         return previous.copy()
 
+    yaw_filter = alpha if yaw_alpha is None else yaw_alpha
     smoothed = current.copy()
     for axis in range(3):
         smoothed[axis, 3] = alpha * previous[axis, 3] + (1.0 - alpha) * current[axis, 3]
 
     yaw_prev = math.radians(yaw_from_matrix(previous[:3, :3]))
     yaw_cur = math.radians(yaw_from_matrix(current[:3, :3]))
-    yaw_smooth = _angle_lerp_rad(yaw_prev, yaw_cur, alpha)
+    yaw_smooth = _angle_lerp_rad(yaw_prev, yaw_cur, yaw_filter)
     cos_yaw = math.cos(yaw_smooth)
     sin_yaw = math.sin(yaw_smooth)
     smoothed[:3, :3] = np.array(
@@ -184,3 +184,29 @@ def smooth_flat_bed_transform(
         dtype=np.float64,
     )
     return smoothed
+
+
+def apply_coordinate_reporting_offset(
+    t_bed_workpiece: np.ndarray,
+    subtract_x_m: float,
+    subtract_y_m: float,
+) -> np.ndarray:
+    """Shift reported pose from calibration origin to ruler origin (e.g. metal corner)."""
+    if subtract_x_m == 0.0 and subtract_y_m == 0.0:
+        return t_bed_workpiece.copy()
+    reported = t_bed_workpiece.copy()
+    reported[0, 3] -= subtract_x_m
+    reported[1, 3] -= subtract_y_m
+    return reported
+
+
+def angle_diff_deg(measured: float, reference: float) -> float:
+    return float((measured - reference + 180.0) % 360.0 - 180.0)
+
+
+def square_yaw_match_error_deg(measured_yaw: float, reference_yaw: float) -> float:
+    """Smallest yaw error allowing 90 deg symmetry for square stock."""
+    return min(
+        abs(angle_diff_deg(measured_yaw, reference_yaw + 90.0 * k))
+        for k in range(4)
+    )

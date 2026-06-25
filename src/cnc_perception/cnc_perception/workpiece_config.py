@@ -44,6 +44,9 @@ class DetectionRoi:
 @dataclass(frozen=True)
 class DetectionConfig:
     blur_kernel_size: int
+    use_clahe: bool
+    clahe_clip_limit: float
+    clahe_tile_size: int
     adaptive_block_size: int
     adaptive_c: int
     canny_low: int
@@ -68,6 +71,8 @@ class DetectionConfig:
     pose_smoothing_alpha: float
     assume_flat_on_bed: bool
     bed_pose_smoothing_alpha: float
+    bed_yaw_smoothing_alpha: float
+    square_yaw_stability_weight: float
 
 
 def _resolve_package_uri(uri: str) -> str:
@@ -107,6 +112,9 @@ def load_workpiece_config(config_path: str) -> tuple[WorkpieceDimensions, Detect
 
     config = DetectionConfig(
         blur_kernel_size=int(detection.get('blur_kernel_size', 5)),
+        use_clahe=bool(detection.get('use_clahe', False)),
+        clahe_clip_limit=float(detection.get('clahe_clip_limit', 2.0)),
+        clahe_tile_size=int(detection.get('clahe_tile_size', 8)),
         adaptive_block_size=int(detection.get('adaptive_block_size', 31)),
         adaptive_c=int(detection.get('adaptive_c', 5)),
         canny_low=int(detection.get('canny_low', 40)),
@@ -136,6 +144,10 @@ def load_workpiece_config(config_path: str) -> tuple[WorkpieceDimensions, Detect
         publish_debug_image=bool(pose.get('publish_debug_image', True)),
         pose_smoothing_alpha=float(pose.get('pose_smoothing_alpha', 0.35)),
         assume_flat_on_bed=bool(pose.get('assume_flat_on_bed', True)),
-        bed_pose_smoothing_alpha=float(pose.get('bed_pose_smoothing_alpha', 0.85)),
+        bed_pose_smoothing_alpha=float(pose.get('bed_pose_smoothing_alpha', 0.88)),
+        bed_yaw_smoothing_alpha=float(
+            pose.get('bed_yaw_smoothing_alpha', pose.get('bed_pose_smoothing_alpha', 0.88))
+        ),
+        square_yaw_stability_weight=float(pose.get('square_yaw_stability_weight', 1.5)),
     )
     return dimensions, config

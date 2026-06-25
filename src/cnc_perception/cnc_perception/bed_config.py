@@ -37,10 +37,17 @@ class ReferenceMarker:
 
 
 @dataclass(frozen=True)
+class CoordinateReporting:
+    subtract_x_m: float
+    subtract_y_m: float
+
+
+@dataclass(frozen=True)
 class BedConfig:
     bed: BedDimensions
     marker: ReferenceMarker
     target: TargetPlacement
+    coordinate_reporting: CoordinateReporting
     show_target_placement: bool
     mesh_enabled: bool
     mesh_stl_path: str
@@ -82,6 +89,10 @@ def load_bed_config(config_path: str) -> BedConfig:
             tolerance_xy_mm=float(tol.get('xy_mm', 2.0)),
             tolerance_z_mm=float(tol.get('z_mm', 1.5)),
             tolerance_yaw_deg=float(tol.get('yaw_deg', 3.0)),
+        ),
+        coordinate_reporting=CoordinateReporting(
+            subtract_x_m=subtract_x_mm / 1000.0,
+            subtract_y_m=subtract_y_mm / 1000.0,
         ),
         show_target_placement=bool(target.get('show_target_marker', False)),
         mesh_enabled=bool(mesh.get('enabled', False)),

@@ -41,7 +41,7 @@ def make_workpiece_markers_at_pose(
 def make_delete_workpiece_markers(stamp, frame_id: str) -> MarkerArray:
     """Remove workpiece markers from RViz when detection is lost."""
     markers = MarkerArray()
-    for marker_id in (0, 1, 2):
+    for marker_id in (0, 1, 2, 3):
         marker = Marker()
         marker.header.stamp = stamp
         marker.header.frame_id = frame_id
@@ -129,3 +129,27 @@ def _build_workpiece_markers(
     markers.markers.append(axes)
 
     return markers
+
+
+def make_pose_status_marker(
+    stamp,
+    frame_id: str,
+    pose: Pose,
+    lines: list[str],
+) -> Marker:
+    """Floating text above the workpiece in RViz (always visible while step05 runs)."""
+    marker = Marker()
+    marker.header.stamp = stamp
+    marker.header.frame_id = frame_id
+    marker.ns = 'workpiece'
+    marker.id = 3
+    marker.type = Marker.TEXT_VIEW_FACING
+    marker.action = Marker.ADD
+    marker.pose = Pose()
+    marker.pose.position.x = pose.position.x
+    marker.pose.position.y = pose.position.y
+    marker.pose.position.z = pose.position.z + 0.035
+    marker.scale.z = 0.018
+    marker.color = _color(1.0, 1.0, 0.2, 1.0)
+    marker.text = '\n'.join(lines)
+    return marker

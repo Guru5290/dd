@@ -36,15 +36,18 @@ from cnc_perception.pose_solver import (
     solve_workpiece_pose_in_bed_frame,
 )
 from cnc_perception.transform_utils import (
+    apply_coordinate_reporting_offset,
     flatten_transform_to_bed_plane,
     is_pose_center_on_bed,
     matrix_to_pose,
     smooth_flat_bed_transform,
     surface_normal_tilt_deg,
     transform_to_matrix,
+    yaw_from_matrix,
 )
 from cnc_perception.visualization import (
     make_delete_workpiece_markers,
+    make_pose_status_marker,
     make_workpiece_markers_at_pose,
 )
 from cnc_perception.image_utils import QOS_IMAGE_SUB, bgr_to_image_msg, image_msg_to_bgr
@@ -78,8 +81,10 @@ class WorkpiecePoseBedFrameNode(Node):
         self._tf_listener = TransformListener(self._tf_buffer, self)
         self._latest_pose: Optional[PoseEstimate] = None
         self._latest_bed_transform: Optional[np.ndarray] = None
+        self._latest_bed_yaw_deg: Optional[float] = None
         self._consecutive_failures = 0
         self._detection_active = False
+        self._is_square = abs(self._dimensions.aspect_ratio - 1.0) < 0.05
 
         image_topic = self.get_parameter('image_topic').get_parameter_value().string_value
         camera_info_topic = self.get_parameter('camera_info_topic').get_parameter_value().string_value
@@ -97,7 +102,9 @@ class WorkpiecePoseBedFrameNode(Node):
         self.create_subscription(Image, image_topic, self._image_cb, QOS_IMAGE_SUB)
         self.create_timer(1.0, self._publish_bed_markers)
         self.get_logger().info(
-            f'Step 05: Using {image_topic} (color) + {camera_info_topic} with rectified intrinsics.'
+            f'Step 05: pose HUD on /workpiece/markers + /workpiece/debug_image. '
+            f'Yaw ref = bed +X (red axis in RViz). assume_flat_on_bed='
+            f'{self._detection.assume_flat_on_bed}'
         )
 
     def _share_path(self, param: str, rel: str) -> str:
@@ -120,10 +127,11 @@ class WorkpiecePoseBedFrameNode(Node):
 
     def _publish_bed_markers(self) -> None:
         stamp = self.get_clock().now().to_msg()
-        self._bed_marker_pub.publish(make_bed_markers(stamp, 'cnc_bed_frame', self._bed_config))
+        self._bed_marker_pub.publish(
+            make_bed_markers(stamp, 'cnc_bed_frame', self._bed_config, self._dimensions)
+        )
 
     def _lookup_bed_from_link(self, stamp) -> Optional[np.ndarray]:
-        # Static TF from step03 — use latest time; image stamps often fail lookup.
         for query_time in (Time(), stamp):
             try:
                 tf_msg = self._tf_buffer.lookup_transform(
@@ -157,10 +165,34 @@ class WorkpiecePoseBedFrameNode(Node):
         if self._consecutive_failures >= 3:
             self._latest_pose = None
             self._latest_bed_transform = None
+            self._latest_bed_yaw_deg = None
         if self._consecutive_failures % 30 == 1:
             self.get_logger().warn(
                 'Workpiece not detected (or rejected). Cube hidden until redetected.',
             )
+
+    def _reported_transform(self, t_bed_workpiece: np.ndarray) -> np.ndarray:
+        reporting = self._bed_config.coordinate_reporting
+        return apply_coordinate_reporting_offset(
+            t_bed_workpiece,
+            reporting.subtract_x_m,
+            reporting.subtract_y_m,
+        )
+
+    def _format_status_lines(
+        self,
+        x_mm: float,
+        y_mm: float,
+        z_mm: float,
+        yaw_deg: float,
+        reproj_px: float,
+        tilt_deg: float,
+    ) -> list[str]:
+        return [
+            f'X={x_mm:.1f} mm  Y={y_mm:.1f} mm  Z={z_mm:.1f} mm',
+            f'yaw_Z={yaw_deg:.1f} deg  (0 deg = workpiece +X along bed +X)',
+            f'reproj={reproj_px:.1f}px  tilt={tilt_deg:.1f} deg',
+        ]
 
     def _image_cb(self, msg: Image) -> None:
         if self._camera_matrix is None:
@@ -215,7 +247,9 @@ class WorkpiecePoseBedFrameNode(Node):
             self._dimensions.thickness_m,
             use_ippe_for_planar=self._detection.use_ippe_for_planar,
             max_tilt_deg=max_tilt,
-            try_corner_permutations=abs(self._dimensions.aspect_ratio - 1.0) < 0.05,
+            try_corner_permutations=self._is_square,
+            reference_bed_yaw_deg=self._latest_bed_yaw_deg,
+            square_yaw_stability_weight=self._detection.square_yaw_stability_weight,
         )
         if pose is None:
             self._handle_detection_lost(stamp)
@@ -235,7 +269,6 @@ class WorkpiecePoseBedFrameNode(Node):
         self._consecutive_failures = 0
 
         optical_frame = OPTICAL_FRAME
-
         t_optical_workpiece = transform_to_matrix(pose.translation, self._rotation_to_quat(pose.rotation_matrix))
         t_link_workpiece = transform_optical_to_link() @ t_optical_workpiece
 
@@ -264,9 +297,12 @@ class WorkpiecePoseBedFrameNode(Node):
                 self._latest_bed_transform,
                 t_bed_workpiece,
                 self._detection.bed_pose_smoothing_alpha,
+                yaw_alpha=self._detection.bed_yaw_smoothing_alpha,
             )
             self._latest_bed_transform = t_bed_workpiece.copy()
+            self._latest_bed_yaw_deg = yaw_from_matrix(t_bed_workpiece[:3, :3])
 
+        t_bed_reported = self._reported_transform(t_bed_workpiece)
         bed_margin = self.get_parameter('bed_margin_m').get_parameter_value().double_value
 
         if not is_pose_center_on_bed(
@@ -275,15 +311,12 @@ class WorkpiecePoseBedFrameNode(Node):
             self._bed_config.bed.width_m,
             margin_m=bed_margin,
         ):
-            x_mm = float(t_bed_workpiece[0, 3]) * 1000.0
-            y_mm = float(t_bed_workpiece[1, 3]) * 1000.0
-            z_mm = float(t_bed_workpiece[2, 3]) * 1000.0
+            x_mm = float(t_bed_reported[0, 3]) * 1000.0
+            y_mm = float(t_bed_reported[1, 3]) * 1000.0
+            z_mm = float(t_bed_reported[2, 3]) * 1000.0
             self.get_logger().warn(
                 f'Workpiece center outside CNC bed — not publishing bed pose. '
-                f'Computed X={x_mm:.1f} mm Y={y_mm:.1f} mm Z={z_mm:.1f} mm '
-                f'(valid X:[{bed_margin*1000:.0f}, {(self._bed_config.bed.length_m - bed_margin)*1000:.0f}] '
-                f'Y:[{bed_margin*1000:.0f}, {(self._bed_config.bed.width_m - bed_margin)*1000:.0f}]). '
-                'Re-run step02 if marker moved or bed axes wrong in RViz.',
+                f'Computed X={x_mm:.1f} mm Y={y_mm:.1f} mm Z={z_mm:.1f} mm',
                 throttle_duration_sec=2.0,
             )
             self._publish_debug_frame(image, msg, detection, f'OFF BED {x_mm:.0f},{y_mm:.0f}')
@@ -294,8 +327,7 @@ class WorkpiecePoseBedFrameNode(Node):
         require_flat = self.get_parameter('publish_pose_only_when_flat').get_parameter_value().bool_value
         if tilt_deg > max_tilt and not self._detection.assume_flat_on_bed:
             self.get_logger().warn(
-                f'Workpiece tilt {tilt_deg:.1f} deg > {max_tilt:.1f} deg — '
-                'check bed calibration (marker yaw) or shadow.',
+                f'Workpiece tilt {tilt_deg:.1f} deg > {max_tilt:.1f} deg',
                 throttle_duration_sec=2.0,
             )
             self._publish_debug_frame(image, msg, detection, f'TILT {tilt_deg:.0f}deg')
@@ -306,39 +338,44 @@ class WorkpiecePoseBedFrameNode(Node):
         pose_bed = PoseStamped()
         pose_bed.header.stamp = stamp
         pose_bed.header.frame_id = 'cnc_bed_frame'
-        pose_bed.pose = matrix_to_pose(t_bed_workpiece)
+        pose_bed.pose = matrix_to_pose(t_bed_reported)
         self._pose_bed_pub.publish(pose_bed)
 
         tf_bed_wp = TransformStamped()
         tf_bed_wp.header.stamp = stamp
         tf_bed_wp.header.frame_id = 'cnc_bed_frame'
         tf_bed_wp.child_frame_id = 'workpiece_frame'
-        tf_bed_wp.transform.translation.x = float(t_bed_workpiece[0, 3])
-        tf_bed_wp.transform.translation.y = float(t_bed_workpiece[1, 3])
-        tf_bed_wp.transform.translation.z = float(t_bed_workpiece[2, 3])
-        bed_quat = rotation_matrix_to_quaternion(t_bed_workpiece[:3, :3])
+        tf_bed_wp.transform.translation.x = float(t_bed_reported[0, 3])
+        tf_bed_wp.transform.translation.y = float(t_bed_reported[1, 3])
+        tf_bed_wp.transform.translation.z = float(t_bed_reported[2, 3])
+        bed_quat = rotation_matrix_to_quaternion(t_bed_reported[:3, :3])
         tf_bed_wp.transform.rotation = bed_quat
         self._tf_broadcaster.sendTransform([tf_bed_wp, tf_optical_wp])
 
-        x_mm = float(t_bed_workpiece[0, 3]) * 1000.0
-        y_mm = float(t_bed_workpiece[1, 3]) * 1000.0
-        z_mm = float(t_bed_workpiece[2, 3]) * 1000.0
+        x_mm = float(t_bed_reported[0, 3]) * 1000.0
+        y_mm = float(t_bed_reported[1, 3]) * 1000.0
+        z_mm = float(t_bed_reported[2, 3]) * 1000.0
+        yaw_deg = yaw_from_matrix(t_bed_reported[:3, :3])
+        status_lines = self._format_status_lines(
+            x_mm, y_mm, z_mm, yaw_deg, pose.reprojection_error, tilt_deg
+        )
         status = String()
-        status.data = (
-            f'Bed frame: X={x_mm:.1f} mm Y={y_mm:.1f} mm Z_top={z_mm:.1f} mm '
-            f'(expect Z≈{self._dimensions.thickness_m * 1000:.1f} mm when flat) '
-            f'reproj={pose.reprojection_error:.1f}px tilt={tilt_deg:.1f}deg'
-        )
+        status.data = 'Bed frame: ' + ' | '.join(status_lines)
         self._status_pub.publish(status)
-        self.get_logger().info(status.data, throttle_duration_sec=2.0)
+        self.get_logger().info(status.data, throttle_duration_sec=1.0)
 
-        self._marker_pub.publish(
-            make_workpiece_markers_at_pose(stamp, 'cnc_bed_frame', pose_bed.pose, self._dimensions)
+        markers = make_workpiece_markers_at_pose(
+            stamp, 'cnc_bed_frame', pose_bed.pose, self._dimensions
         )
+        markers.markers.append(
+            make_pose_status_marker(stamp, 'cnc_bed_frame', pose_bed.pose, status_lines)
+        )
+        self._marker_pub.publish(markers)
         self._detection_active = True
 
-        debug = draw_detection_debug(image, detection, 'OK')
-        self._publish_debug_frame(image, msg, detection, 'OK')
+        self._publish_debug_frame(
+            image, msg, detection, 'OK', status_lines=status_lines
+        )
 
     def _publish_debug_frame(
         self,
@@ -346,7 +383,10 @@ class WorkpiecePoseBedFrameNode(Node):
         msg: Image,
         detection,
         label: str,
+        status_lines: Optional[list[str]] = None,
     ) -> None:
+        if not self._detection.publish_debug_image:
+            return
         if detection is None:
             candidates, edges = diagnose_contours(image, self._dimensions, self._detection, top_n=3)
             from cnc_perception.contour_detector import draw_diagnostic_overlay
@@ -355,7 +395,7 @@ class WorkpiecePoseBedFrameNode(Node):
                 debug, label, (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 2, cv2.LINE_AA
             )
         else:
-            debug = draw_detection_debug(image, detection, label)
+            debug = draw_detection_debug(image, detection, label, status_lines=status_lines)
         debug_msg = bgr_to_image_msg(debug, msg.header, msg.header.frame_id or OPTICAL_FRAME)
         self._debug_pub.publish(debug_msg)
 

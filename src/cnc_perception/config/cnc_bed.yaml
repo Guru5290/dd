@@ -10,6 +10,12 @@ cnc_bed:
     y: along_left_edge_to_the_back
     z: up_from_bed_surface
 
+# Reported X/Y in step05 are shifted so 0,0 matches the metal front-left corner.
+# Calibration uses the ArUco center as cnc_bed_frame origin; metal corner is +24,+24 mm.
+coordinate_reporting:
+  subtract_from_x_mm: 24.0
+  subtract_from_y_mm: 24.0
+
 reference_marker:
   type: aruco
   dictionary: DICT_4X4_50
@@ -19,10 +25,10 @@ reference_marker:
   # See SETUP_AND_CALIBRATION_GUIDE.md for marker print orientation.
   # After placing marker, tune only if RViz bed axes do not match real bed edges.
   marker_to_bed_yaw_deg: 0.0
-  flip_marker_y: false
+  flip_marker_y: true
 
 target_placement:
-  show_target_marker: false
+  show_target_marker: true
   x_m: 0.100
   y_m: 0.100
   z_m: 0.0

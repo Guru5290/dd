@@ -100,7 +100,19 @@ def _aspect_ratio_matches(candidate_ratio: float, expected_ratio: float, toleran
     return min(direct_error, inverse_error) <= tolerance
 
 
+def _normalize_gray(gray: np.ndarray, config: DetectionConfig) -> np.ndarray:
+    if not config.use_clahe:
+        return gray
+    tile = max(2, config.clahe_tile_size)
+    clahe = cv2.createCLAHE(
+        clipLimit=float(config.clahe_clip_limit),
+        tileGridSize=(tile, tile),
+    )
+    return clahe.apply(gray)
+
+
 def _edges_from_gray(gray: np.ndarray, config: DetectionConfig, invert: bool) -> np.ndarray:
+    gray = _normalize_gray(gray, config)
     if config.blur_kernel_size > 1:
         k = config.blur_kernel_size | 1
         gray = cv2.GaussianBlur(gray, (k, k), 0)
@@ -121,6 +133,7 @@ def _edges_from_gray(gray: np.ndarray, config: DetectionConfig, invert: bool) ->
 
 
 def _edges_otsu(gray: np.ndarray, config: DetectionConfig) -> np.ndarray:
+    gray = _normalize_gray(gray, config)
     if config.blur_kernel_size > 1:
         k = config.blur_kernel_size | 1
         gray = cv2.GaussianBlur(gray, (k, k), 0)
@@ -279,6 +292,7 @@ def draw_detection_debug(
     image_bgr: np.ndarray,
     detection: DetectionResult,
     label: str = '',
+    status_lines: Optional[list[str]] = None,
 ) -> np.ndarray:
     debug = image_bgr.copy()
     cv2.drawContours(debug, [detection.contour], -1, (0, 255, 0), 2)
@@ -295,17 +309,32 @@ def draw_detection_debug(
             1,
             cv2.LINE_AA,
         )
+    y = 30
     if label:
         cv2.putText(
             debug,
             label,
-            (20, 40),
+            (20, y),
             cv2.FONT_HERSHEY_SIMPLEX,
-            1.0,
+            0.9,
             (0, 255, 0),
             2,
             cv2.LINE_AA,
         )
+        y += 35
+    if status_lines:
+        for line in status_lines:
+            cv2.putText(
+                debug,
+                line,
+                (20, y),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.65,
+                (255, 255, 255),
+                2,
+                cv2.LINE_AA,
+            )
+            y += 28
     return debug
 
 

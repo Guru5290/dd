@@ -9,7 +9,7 @@ import cv2
 import numpy as np
 from geometry_msgs.msg import Pose, Quaternion
 
-from cnc_perception.transform_utils import surface_normal_tilt_deg
+from cnc_perception.transform_utils import square_yaw_match_error_deg, surface_normal_tilt_deg, yaw_from_matrix
 
 
 @dataclass
@@ -122,7 +122,7 @@ def _bed_plausibility_score(
     if z_m < 0.0:
         z_err_mm += 500.0
     tilt_penalty = max(0.0, tilt_deg - max_tilt_deg) * 3.0
-    return z_err_mm + tilt_deg * 5.0 + tilt_penalty
+    return z_err_mm + tilt_penalty
 
 
 def _image_corner_permutations(image_corners: np.ndarray, try_rotations: bool) -> list[np.ndarray]:
@@ -185,6 +185,24 @@ def _collect_planar_pose_candidates(
     return candidates
 
 
+def _yaw_stability_penalty(
+    t_bed_workpiece: np.ndarray,
+    reference_bed_yaw_deg: Optional[float],
+    *,
+    square_stock: bool,
+    weight: float,
+) -> float:
+    if reference_bed_yaw_deg is None or weight <= 0.0:
+        return 0.0
+    bed_yaw = yaw_from_matrix(t_bed_workpiece[:3, :3])
+    if square_stock:
+        error = square_yaw_match_error_deg(bed_yaw, reference_bed_yaw_deg)
+    else:
+        from cnc_perception.transform_utils import angle_diff_deg
+        error = abs(angle_diff_deg(bed_yaw, reference_bed_yaw_deg))
+    return error * weight
+
+
 def solve_workpiece_pose_in_bed_frame(
     image_corners: np.ndarray,
     object_corners: list[list[float]],
@@ -196,6 +214,8 @@ def solve_workpiece_pose_in_bed_frame(
     use_ippe_for_planar: bool = True,
     max_tilt_deg: float = 35.0,
     try_corner_permutations: bool = True,
+    reference_bed_yaw_deg: Optional[float] = None,
+    square_yaw_stability_weight: float = 0.0,
 ) -> Optional[PoseEstimate]:
     """
     Solve pose and pick the IPPE / corner assignment that is physically plausible
@@ -215,6 +235,12 @@ def solve_workpiece_pose_in_bed_frame(
         ):
             t_bed = _pose_to_bed_matrix(pose, t_bed_from_optical)
             score = _bed_plausibility_score(t_bed, thickness_m, max_tilt_deg) + pose.reprojection_error
+            score += _yaw_stability_penalty(
+                t_bed,
+                reference_bed_yaw_deg,
+                square_stock=try_corner_permutations,
+                weight=square_yaw_stability_weight,
+            )
             if score < best_score:
                 best_score = score
                 best_pose = pose
