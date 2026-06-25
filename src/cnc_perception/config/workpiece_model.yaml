@@ -31,20 +31,24 @@ detection:
   try_inverted_threshold: true
   try_otsu_threshold: true
   use_relaxed_fallback: true
-  # Full bed visible — no ROI crop. Enable only to mask a fixed clutter region.
+  # Crop right side of image (floor outside CNC) — keep enabled for your camera view.
   roi:
-    enabled: false
+    enabled: true
     x_min_ratio: 0.0
     y_min_ratio: 0.0
-    x_max_ratio: 0.72 #1.0
-    y_max_ratio: 1.0  
+    x_max_ratio: 0.72
+    y_max_ratio: 1.0
 
 size_filter:
-  min_area_ratio: 0.0005 #0.0002
-  # Reject huge merged part+shadow blobs (50 mm part is usually <25% of image).
-  max_area_ratio: 0.08 #0.30
+  min_area_ratio: 0.0005
+  max_area_ratio: 0.08
 
 pose:
   use_ippe_for_planar: true
   publish_debug_image: true
-  pose_smoothing_alpha: 0.30
+  # Camera-frame solvePnP smoothing (light).
+  pose_smoothing_alpha: 0.20
+  # Flat stock on the bed: force tilt=0 and Z=thickness in cnc_bed_frame.
+  assume_flat_on_bed: true
+  # Bed-frame X/Y/yaw smoothing (higher = less jitter in RViz).
+  bed_pose_smoothing_alpha: 0.88

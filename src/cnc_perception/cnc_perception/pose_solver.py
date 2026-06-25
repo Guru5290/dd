@@ -122,7 +122,7 @@ def _bed_plausibility_score(
     if z_m < 0.0:
         z_err_mm += 500.0
     tilt_penalty = max(0.0, tilt_deg - max_tilt_deg) * 3.0
-    return z_err_mm + tilt_penalty
+    return z_err_mm + tilt_deg * 5.0 + tilt_penalty
 
 
 def _image_corner_permutations(image_corners: np.ndarray, try_rotations: bool) -> list[np.ndarray]:

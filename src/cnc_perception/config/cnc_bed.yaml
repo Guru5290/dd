@@ -19,7 +19,7 @@ reference_marker:
   # See SETUP_AND_CALIBRATION_GUIDE.md for marker print orientation.
   # After placing marker, tune only if RViz bed axes do not match real bed edges.
   marker_to_bed_yaw_deg: 0.0
-  flip_marker_y: true
+  flip_marker_y: false
 
 target_placement:
   show_target_marker: false

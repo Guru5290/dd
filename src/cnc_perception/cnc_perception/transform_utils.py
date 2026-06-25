@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import math
-from typing import Iterable
-
-import math
+from typing import Iterable, Optional
 
 import numpy as np
 from geometry_msgs.msg import Pose, Quaternion, Transform
@@ -132,3 +130,57 @@ def surface_normal_tilt_deg(rotation: np.ndarray) -> float:
     normal = rotation[:, 2]
     cos_angle = float(np.clip(normal[2], -1.0, 1.0))
     return float(math.degrees(math.acos(cos_angle)))
+
+
+def flatten_transform_to_bed_plane(t_bed_workpiece: np.ndarray, thickness_m: float) -> np.ndarray:
+    """
+    Constrain a flat workpiece on the bed: keep X, Y, yaw; Z = top-face height; tilt = 0.
+    """
+    yaw_rad = math.radians(yaw_from_matrix(t_bed_workpiece[:3, :3]))
+    cos_yaw = math.cos(yaw_rad)
+    sin_yaw = math.sin(yaw_rad)
+    flat = np.eye(4, dtype=np.float64)
+    flat[0, 0] = cos_yaw
+    flat[0, 1] = -sin_yaw
+    flat[1, 0] = sin_yaw
+    flat[1, 1] = cos_yaw
+    flat[0, 3] = float(t_bed_workpiece[0, 3])
+    flat[1, 3] = float(t_bed_workpiece[1, 3])
+    flat[2, 3] = float(thickness_m)
+    return flat
+
+
+def _angle_lerp_rad(previous: float, current: float, alpha: float) -> float:
+    delta = math.atan2(math.sin(current - previous), math.cos(current - previous))
+    return previous + (1.0 - alpha) * delta
+
+
+def smooth_flat_bed_transform(
+    previous: Optional[np.ndarray],
+    current: np.ndarray,
+    alpha: float,
+) -> np.ndarray:
+    """Low-pass filter X/Y/Z and yaw for a bed-flat workpiece transform."""
+    if previous is None or alpha <= 0.0:
+        return current.copy()
+    if alpha >= 1.0:
+        return previous.copy()
+
+    smoothed = current.copy()
+    for axis in range(3):
+        smoothed[axis, 3] = alpha * previous[axis, 3] + (1.0 - alpha) * current[axis, 3]
+
+    yaw_prev = math.radians(yaw_from_matrix(previous[:3, :3]))
+    yaw_cur = math.radians(yaw_from_matrix(current[:3, :3]))
+    yaw_smooth = _angle_lerp_rad(yaw_prev, yaw_cur, alpha)
+    cos_yaw = math.cos(yaw_smooth)
+    sin_yaw = math.sin(yaw_smooth)
+    smoothed[:3, :3] = np.array(
+        [
+            [cos_yaw, -sin_yaw, 0.0],
+            [sin_yaw, cos_yaw, 0.0],
+            [0.0, 0.0, 1.0],
+        ],
+        dtype=np.float64,
+    )
+    return smoothed

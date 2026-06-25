@@ -66,6 +66,8 @@ class DetectionConfig:
     use_ippe_for_planar: bool
     publish_debug_image: bool
     pose_smoothing_alpha: float
+    assume_flat_on_bed: bool
+    bed_pose_smoothing_alpha: float
 
 
 def _resolve_package_uri(uri: str) -> str:
@@ -133,5 +135,7 @@ def load_workpiece_config(config_path: str) -> tuple[WorkpieceDimensions, Detect
         use_ippe_for_planar=bool(pose.get('use_ippe_for_planar', True)),
         publish_debug_image=bool(pose.get('publish_debug_image', True)),
         pose_smoothing_alpha=float(pose.get('pose_smoothing_alpha', 0.35)),
+        assume_flat_on_bed=bool(pose.get('assume_flat_on_bed', True)),
+        bed_pose_smoothing_alpha=float(pose.get('bed_pose_smoothing_alpha', 0.85)),
     )
     return dimensions, config

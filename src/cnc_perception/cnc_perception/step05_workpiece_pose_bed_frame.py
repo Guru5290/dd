@@ -36,8 +36,10 @@ from cnc_perception.pose_solver import (
     solve_workpiece_pose_in_bed_frame,
 )
 from cnc_perception.transform_utils import (
+    flatten_transform_to_bed_plane,
     is_pose_center_on_bed,
     matrix_to_pose,
+    smooth_flat_bed_transform,
     surface_normal_tilt_deg,
     transform_to_matrix,
 )
@@ -75,6 +77,7 @@ class WorkpiecePoseBedFrameNode(Node):
         self._tf_buffer = Buffer()
         self._tf_listener = TransformListener(self._tf_buffer, self)
         self._latest_pose: Optional[PoseEstimate] = None
+        self._latest_bed_transform: Optional[np.ndarray] = None
         self._consecutive_failures = 0
         self._detection_active = False
 
@@ -153,6 +156,7 @@ class WorkpiecePoseBedFrameNode(Node):
             self._detection_active = False
         if self._consecutive_failures >= 3:
             self._latest_pose = None
+            self._latest_bed_transform = None
         if self._consecutive_failures % 30 == 1:
             self.get_logger().warn(
                 'Workpiece not detected (or rejected). Cube hidden until redetected.',
@@ -251,6 +255,18 @@ class WorkpiecePoseBedFrameNode(Node):
         tf_optical_wp.transform.rotation = rotation_matrix_to_quaternion(pose.rotation_matrix)
 
         t_bed_workpiece = t_bed_link @ t_link_workpiece
+        if self._detection.assume_flat_on_bed:
+            t_bed_workpiece = flatten_transform_to_bed_plane(
+                t_bed_workpiece,
+                self._dimensions.thickness_m,
+            )
+            t_bed_workpiece = smooth_flat_bed_transform(
+                self._latest_bed_transform,
+                t_bed_workpiece,
+                self._detection.bed_pose_smoothing_alpha,
+            )
+            self._latest_bed_transform = t_bed_workpiece.copy()
+
         bed_margin = self.get_parameter('bed_margin_m').get_parameter_value().double_value
 
         if not is_pose_center_on_bed(
@@ -276,7 +292,7 @@ class WorkpiecePoseBedFrameNode(Node):
 
         tilt_deg = surface_normal_tilt_deg(t_bed_workpiece[:3, :3])
         require_flat = self.get_parameter('publish_pose_only_when_flat').get_parameter_value().bool_value
-        if tilt_deg > max_tilt:
+        if tilt_deg > max_tilt and not self._detection.assume_flat_on_bed:
             self.get_logger().warn(
                 f'Workpiece tilt {tilt_deg:.1f} deg > {max_tilt:.1f} deg — '
                 'check bed calibration (marker yaw) or shadow.',
