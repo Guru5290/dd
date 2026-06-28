@@ -9,7 +9,7 @@ from geometry_msgs.msg import Point, Pose, Quaternion, Vector3
 from std_msgs.msg import ColorRGBA
 from visualization_msgs.msg import Marker, MarkerArray
 
-from cnc_perception.bed_config import BedConfig, TargetPlacement
+from cnc_perception.bed_config import BedConfig, CoordinateReporting, TargetPlacement
 from cnc_perception.workpiece_config import WorkpieceDimensions
 
 
@@ -113,11 +113,12 @@ def make_bed_markers(
     markers.markers.append(axes)
 
     if bed_config.show_target_placement and workpiece_dimensions is not None:
-        target_markers = _make_target_outline_markers(
+        target_markers = make_target_placement_markers(
             stamp,
             frame_id,
             bed_config.target,
             workpiece_dimensions,
+            bed_config.coordinate_reporting,
             marker_id,
         )
         markers.markers.extend(target_markers)
@@ -232,74 +233,137 @@ def _dotted_rectangle_points(
     return points
 
 
+def _target_center_in_bed_frame(
+    target: TargetPlacement,
+    reporting: CoordinateReporting,
+) -> tuple[float, float]:
+    """Target uses the same coordinates as /workpiece/pose_in_bed_frame (ruler frame)."""
+    _ = reporting
+    return target.x_m, target.y_m
+
+
+def make_target_placement_markers(
+    stamp,
+    frame_id: str,
+    target: TargetPlacement,
+    dimensions: WorkpieceDimensions,
+    reporting: CoordinateReporting,
+    marker_id: int = 0,
+) -> list[Marker]:
+    """Green target footprint (dotted + solid outline) centered at target X/Y."""
+    center_x, center_y = _target_center_in_bed_frame(target, reporting)
+    return _make_target_outline_markers(
+        stamp,
+        frame_id,
+        target,
+        dimensions,
+        marker_id,
+        center_x=center_x,
+        center_y=center_y,
+    )
+
+
 def _make_target_outline_markers(
     stamp,
     frame_id: str,
     target: TargetPlacement,
     dimensions: WorkpieceDimensions,
     marker_id: int,
+    *,
+    center_x: float,
+    center_y: float,
 ) -> list[Marker]:
     """Green dotted footprint centered at target X/Y with target yaw."""
     half_w = dimensions.width_m / 2.0
     half_l = dimensions.length_m / 2.0
-    z = 0.003
+    z = 0.012
     corners = _rotated_rectangle_corners(
-        target.x_m,
-        target.y_m,
+        center_x,
+        center_y,
         half_w,
         half_l,
         target.yaw_deg,
         z,
     )
 
+    solid = Marker()
+    solid.header.stamp = stamp
+    solid.header.frame_id = frame_id
+    solid.ns = 'target'
+    solid.id = marker_id
+    solid.type = Marker.LINE_STRIP
+    solid.action = Marker.ADD
+    solid.pose = _identity_pose()
+    solid.scale.x = 0.005
+    solid.color = _color(0.1, 1.0, 0.2, 0.95)
+    solid.points = corners + [corners[0]]
+
     outline = Marker()
     outline.header.stamp = stamp
     outline.header.frame_id = frame_id
     outline.ns = 'target'
-    outline.id = marker_id
+    outline.id = marker_id + 1
     outline.type = Marker.LINE_LIST
     outline.action = Marker.ADD
     outline.pose = _identity_pose()
-    outline.scale.x = 0.003
-    outline.color = _color(0.15, 0.95, 0.25, 1.0)
-    outline.points = _dotted_rectangle_points(corners, dash_length_m=0.006, gap_length_m=0.004)
+    outline.scale.x = 0.006
+    outline.color = _color(0.1, 1.0, 0.2, 1.0)
+    outline.points = _dotted_rectangle_points(corners, dash_length_m=0.008, gap_length_m=0.005)
 
     center = Marker()
     center.header.stamp = stamp
     center.header.frame_id = frame_id
     center.ns = 'target'
-    center.id = marker_id + 1
+    center.id = marker_id + 2
     center.type = Marker.SPHERE
     center.action = Marker.ADD
     center.pose = _identity_pose()
-    center.pose.position.x = target.x_m
-    center.pose.position.y = target.y_m
+    center.pose.position.x = center_x
+    center.pose.position.y = center_y
     center.pose.position.z = z
-    center.scale = Vector3(x=0.006, y=0.006, z=0.006)
-    center.color = _color(0.15, 0.95, 0.25, 1.0)
+    center.scale = Vector3(x=0.008, y=0.008, z=0.008)
+    center.color = _color(0.1, 1.0, 0.2, 1.0)
 
     yaw_rad = math.radians(target.yaw_deg)
-    axis_len = min(dimensions.width_m, dimensions.length_m) * 0.35
+    axis_len = min(dimensions.width_m, dimensions.length_m) * 0.45
     yaw_axis = Marker()
     yaw_axis.header.stamp = stamp
     yaw_axis.header.frame_id = frame_id
     yaw_axis.ns = 'target'
-    yaw_axis.id = marker_id + 2
+    yaw_axis.id = marker_id + 3
     yaw_axis.type = Marker.LINE_LIST
     yaw_axis.action = Marker.ADD
     yaw_axis.pose = _identity_pose()
-    yaw_axis.scale.x = 0.004
-    yaw_axis.color = _color(0.95, 0.95, 0.2, 1.0)
+    yaw_axis.scale.x = 0.005
+    yaw_axis.color = _color(1.0, 1.0, 0.15, 1.0)
     yaw_axis.points = [
-        Point(x=target.x_m, y=target.y_m, z=z),
+        Point(x=center_x, y=center_y, z=z),
         Point(
-            x=target.x_m + math.cos(yaw_rad) * axis_len,
-            y=target.y_m + math.sin(yaw_rad) * axis_len,
+            x=center_x + math.cos(yaw_rad) * axis_len,
+            y=center_y + math.sin(yaw_rad) * axis_len,
             z=z,
         ),
     ]
 
-    return [outline, center, yaw_axis]
+    label = Marker()
+    label.header.stamp = stamp
+    label.header.frame_id = frame_id
+    label.ns = 'target'
+    label.id = marker_id + 4
+    label.type = Marker.TEXT_VIEW_FACING
+    label.action = Marker.ADD
+    label.pose = _identity_pose()
+    label.pose.position.x = center_x
+    label.pose.position.y = center_y
+    label.pose.position.z = z + 0.02
+    label.scale.z = 0.014
+    label.color = _color(0.2, 1.0, 0.3, 1.0)
+    label.text = (
+        f'TARGET {target.x_m*1000:.0f},{target.y_m*1000:.0f} mm '
+        f'yaw {target.yaw_deg:.0f} deg'
+    )
+
+    return [solid, outline, center, yaw_axis, label]
 
 
 def make_placement_status_marker(

@@ -4,10 +4,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 import yaml
 from ament_index_python.packages import PackageNotFoundError, get_package_share_directory
+
+from cnc_perception.pose_ekf import EkfConfig
+from cnc_perception.workpiece_marker_pose import WorkpieceMarkerConfig
 
 
 @dataclass(frozen=True)
@@ -73,6 +76,25 @@ class DetectionConfig:
     bed_pose_smoothing_alpha: float
     bed_yaw_smoothing_alpha: float
     square_yaw_stability_weight: float
+    lost_frames_to_reset_smoothing: int
+
+
+@dataclass(frozen=True)
+class PoseEstimationSettings:
+    mode: str
+    shape_mode: str
+    is_square_stock: bool
+    ekf: EkfConfig
+    marker: Optional[WorkpieceMarkerConfig]
+
+
+def resolve_shape_mode(shape_mode: str, dimensions: WorkpieceDimensions) -> bool:
+    normalized = shape_mode.strip().lower()
+    if normalized == 'square':
+        return True
+    if normalized == 'rectangle':
+        return False
+    return abs(dimensions.aspect_ratio - 1.0) < 0.05
 
 
 def _resolve_package_uri(uri: str) -> str:
@@ -87,7 +109,9 @@ def _resolve_package_uri(uri: str) -> str:
     return str(Path(share_dir) / relative_path)
 
 
-def load_workpiece_config(config_path: str) -> tuple[WorkpieceDimensions, DetectionConfig]:
+def load_workpiece_config(
+    config_path: str,
+) -> tuple[WorkpieceDimensions, DetectionConfig, PoseEstimationSettings]:
     path = Path(config_path)
     if not path.is_file():
         raise FileNotFoundError(f'Workpiece config not found: {config_path}')
@@ -100,6 +124,9 @@ def load_workpiece_config(config_path: str) -> tuple[WorkpieceDimensions, Detect
     size_filter = raw.get('size_filter', {})
     template = raw.get('template', {})
     pose = raw.get('pose', {})
+    pose_estimation = raw.get('pose_estimation', {})
+    ekf_raw = pose_estimation.get('ekf', {})
+    marker_raw = raw.get('workpiece_marker', pose_estimation.get('workpiece_marker', {}))
 
     dimensions = WorkpieceDimensions(
         width_m=float(workpiece['width_m']),
@@ -149,5 +176,43 @@ def load_workpiece_config(config_path: str) -> tuple[WorkpieceDimensions, Detect
             pose.get('bed_yaw_smoothing_alpha', pose.get('bed_pose_smoothing_alpha', 0.88))
         ),
         square_yaw_stability_weight=float(pose.get('square_yaw_stability_weight', 1.5)),
+        lost_frames_to_reset_smoothing=int(pose.get('lost_frames_to_reset_smoothing', 1)),
     )
-    return dimensions, config
+
+    exclude_ids_raw = marker_raw.get('exclude_ids', [0])
+    if isinstance(exclude_ids_raw, int):
+        exclude_ids = (int(exclude_ids_raw),)
+    else:
+        exclude_ids = tuple(int(value) for value in exclude_ids_raw)
+
+    marker_config = WorkpieceMarkerConfig(
+        dictionary=str(marker_raw.get('dictionary', 'DICT_4X4_50')),
+        marker_id=int(marker_raw.get('marker_id', 1)),
+        marker_size_m=float(marker_raw.get('marker_size_m', 0.020)),
+        exclude_ids=exclude_ids,
+        center_x_m=float(marker_raw.get('center_x_m', 0.0)),
+        center_y_m=float(marker_raw.get('center_y_m', 0.0)),
+        yaw_offset_deg=float(marker_raw.get('yaw_offset_deg', 0.0)),
+        fallback_to_markerless=bool(marker_raw.get('fallback_to_markerless', True)),
+    )
+
+    shape_mode = str(pose_estimation.get('shape_mode', 'auto'))
+    pose_settings = PoseEstimationSettings(
+        mode=str(pose_estimation.get('mode', 'markerless')).strip().lower(),
+        shape_mode=shape_mode,
+        is_square_stock=resolve_shape_mode(shape_mode, dimensions),
+        ekf=EkfConfig(
+            enabled=bool(ekf_raw.get('enabled', True)),
+            warmup_sec=float(ekf_raw.get('warmup_sec', 15.0)),
+            max_yaw_rate_deg_s=float(ekf_raw.get('max_yaw_rate_deg_s', 90.0)),
+            max_position_rate_m_s=float(ekf_raw.get('max_position_rate_m_s', 0.5)),
+            process_noise_xy_m=float(ekf_raw.get('process_noise_xy_m', 0.0005)),
+            process_noise_z_m=float(ekf_raw.get('process_noise_z_m', 0.0002)),
+            process_noise_yaw_deg=float(ekf_raw.get('process_noise_yaw_deg', 2.0)),
+            measurement_noise_xy_m=float(ekf_raw.get('measurement_noise_xy_m', 0.002)),
+            measurement_noise_z_m=float(ekf_raw.get('measurement_noise_z_m', 0.001)),
+            measurement_noise_yaw_deg=float(ekf_raw.get('measurement_noise_yaw_deg', 3.0)),
+        ),
+        marker=marker_config,
+    )
+    return dimensions, config, pose_settings

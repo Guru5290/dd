@@ -27,7 +27,7 @@ class DebugWorkpieceDetectionNode(Node):
         self.declare_parameter('workpiece_config_path', '')
         self.declare_parameter('output_dir', '/tmp/cnc_perception_debug')
         config_path = self._resolve_config()
-        self._dimensions, self._detection = load_workpiece_config(config_path)
+        self._dimensions, self._detection, _ = load_workpiece_config(config_path)
         self._output_dir = Path(
             self.get_parameter('output_dir').get_parameter_value().string_value
         )

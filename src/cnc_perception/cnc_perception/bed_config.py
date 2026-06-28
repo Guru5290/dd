@@ -67,6 +67,9 @@ def load_bed_config(config_path: str) -> BedConfig:
     target = raw.get('target_placement', {})
     tol = target.get('tolerance', {})
     mesh = raw.get('workpiece_mesh', {})
+    reporting = raw.get('coordinate_reporting', {})
+    subtract_x_mm = float(reporting.get('subtract_from_x_mm', 0.0))
+    subtract_y_mm = float(reporting.get('subtract_from_y_mm', 0.0))
 
     return BedConfig(
         bed=BedDimensions(

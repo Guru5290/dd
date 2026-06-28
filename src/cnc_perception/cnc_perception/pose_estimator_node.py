@@ -49,7 +49,7 @@ class PoseEstimatorNode(Node):
             self.get_parameter('workpiece_config_path').get_parameter_value().string_value
         )
         try:
-            self._dimensions, self._detection_config = load_workpiece_config(config_path)
+            self._dimensions, self._detection_config, _ = load_workpiece_config(config_path)
         except (FileNotFoundError, KeyError, TypeError, ValueError) as exc:
             self.get_logger().fatal(f'Failed to load workpiece config: {exc}')
             raise

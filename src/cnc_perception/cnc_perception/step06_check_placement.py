@@ -26,7 +26,7 @@ class CheckPlacementNode(Node):
         self.declare_parameter('bed_config_path', '')
         self.declare_parameter('workpiece_config_path', '')
         self._bed_config = load_bed_config(self._share_path('bed_config_path', 'config/cnc_bed.yaml'))
-        self._dimensions, _ = load_workpiece_config(
+        self._dimensions, _, _ = load_workpiece_config(
             self._share_path('workpiece_config_path', 'config/workpiece_model.yaml')
         )
         self._status_pub = self.create_publisher(String, '/workpiece/placement_status', 10)

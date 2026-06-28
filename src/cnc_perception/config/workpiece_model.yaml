@@ -1,7 +1,7 @@
-# Physical dimensions of the plain square workpiece (meters).
+# 60 x 30 mm rectangular workpiece (meters).
 workpiece:
-  width_m: 0.050
-  length_m: 0.050
+  width_m: 0.060
+  length_m: 0.030
   thickness_m: 0.010
 
 object_frame:
@@ -10,49 +10,76 @@ object_frame:
   y_axis: length
   z_axis: thickness
 
+# markerless | marked | marked_fallback
+pose_estimation:
+  mode: markerless
+  # auto | square | rectangle — use rectangle for 60x30, square for equal sides.
+  shape_mode: rectangle
+  ekf:
+    enabled: true
+    warmup_sec: 15.0
+    max_yaw_rate_deg_s: 90.0
+    max_position_rate_m_s: 0.5
+    process_noise_xy_m: 0.0005
+    process_noise_z_m: 0.0002
+    process_noise_yaw_deg: 2.0
+    measurement_noise_xy_m: 0.002
+    measurement_noise_z_m: 0.001
+    measurement_noise_yaw_deg: 3.0
+
+# Used when pose_estimation.mode is marked or marked_fallback.
+# Print a second ArUco (e.g. id=1, 20 mm) and glue on the workpiece top face.
+workpiece_marker:
+  dictionary: DICT_4X4_50
+  marker_id: 1
+  marker_size_m: 0.020
+  exclude_ids: [0]
+  center_x_m: 0.020
+  center_y_m: 0.010
+  yaw_offset_deg: 0.0
+  fallback_to_markerless: true
+
 template:
   enabled: false
   path: "package://cnc_perception/config/templates/workpiece_edge_template.png"
   match_threshold: 0.72
 
-# Detection for 50 mm stock, ELP side-mounted tilted camera, open metal bed.
 detection:
-  blur_kernel_size: 7
+  blur_kernel_size: 5
   use_clahe: true
   clahe_clip_limit: 2.0
   clahe_tile_size: 8
   adaptive_block_size: 31
-  adaptive_c: 4
-  canny_low: 30
-  canny_high: 100
-  min_contour_area_px: 250
+  adaptive_c: 3
+  canny_low: 25
+  canny_high: 90
+  min_contour_area_px: 80
   max_contour_area_px: 200000
-  aspect_ratio_tolerance: 0.35
-  polygon_epsilon_ratio: 0.035
-  min_solidity: 0.55
+  aspect_ratio_tolerance: 0.22
+  polygon_epsilon_ratio: 0.028
+  min_solidity: 0.48
   min_interior_contrast: 0.0
   try_inverted_threshold: true
   try_otsu_threshold: true
   use_relaxed_fallback: true
-  # Full bed visible — no ROI crop. Enable only to mask a fixed clutter region.
   roi:
     enabled: false
     x_min_ratio: 0.0
     y_min_ratio: 0.0
-    x_max_ratio: 0.72 #1.0
-    y_max_ratio: 1.0  
+    x_max_ratio: 1.0
+    y_max_ratio: 1.0
 
 size_filter:
-  min_area_ratio: 0.0005 #0.0002
-  # Reject huge merged part+shadow blobs (50 mm part is usually <25% of image).
-  max_area_ratio: 0.08 #0.30
+  min_area_ratio: 0.00015
+  max_area_ratio: 0.15
 
 pose:
   use_ippe_for_planar: true
   publish_debug_image: true
-  pose_smoothing_alpha: 0.25
+  pose_smoothing_alpha: 0.10
   assume_flat_on_bed: true
-  bed_pose_smoothing_alpha: 0.90
-  bed_yaw_smoothing_alpha: 0.96
-  # Prefer corner assignments consistent with previous yaw (reduces lighting jumps).
-  square_yaw_stability_weight: 1.5
+  # Legacy smoothing — used only when ekf.enabled is false.
+  bed_pose_smoothing_alpha: 0.45
+  bed_yaw_smoothing_alpha: 0.55
+  square_yaw_stability_weight: 0.0
+  lost_frames_to_reset_smoothing: 1
