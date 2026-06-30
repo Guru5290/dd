@@ -43,8 +43,8 @@ def check_placement(
     yaw_deg = yaw_from_matrix(t_bed_workpiece)
     target_yaw_deg = target.yaw_deg
     if square_yaw_fold:
-        yaw_deg = fold_square_yaw_deg(yaw_deg)
         target_yaw_deg = fold_square_yaw_deg(target_yaw_deg)
+        yaw_deg = fold_square_yaw_deg(yaw_deg, reference_yaw_deg=target_yaw_deg)
 
     dx_mm = (x_m - target.x_m) * 1000.0
     dy_mm = (y_m - target.y_m) * 1000.0

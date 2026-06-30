@@ -212,19 +212,45 @@ def square_yaw_match_error_deg(measured_yaw: float, reference_yaw: float) -> flo
     )
 
 
-def fold_square_yaw_deg(yaw_deg: float) -> float:
-    """Fold yaw into [0, 90) degrees for square stock (90/180/270/360 -> 0)."""
-    folded = math.fmod(float(yaw_deg), 90.0)
-    if folded < 0.0:
-        folded += 90.0
-    if folded >= 90.0 - 1e-9:
-        folded = 0.0
-    return folded
+def fold_square_yaw_deg(yaw_deg: float, reference_yaw_deg: float | None = None) -> float:
+    """Canonical square yaw in [0, 90] from a fixed 0 deg bed reference.
+
+    Squares have 90 deg symmetry, so vision may label the same pose as ~5 deg or
+    ~85 deg. Pick the 90 deg-equivalent nearest ``reference_yaw_deg`` (if given),
+    then express the offset from axis-aligned edges in [0, 90] via the nearer
+    edge so slight misalignment stays near 0 deg (87 deg -> 3 deg, not 87 deg).
+    """
+    y = float(yaw_deg)
+    if reference_yaw_deg is not None:
+        ref = float(reference_yaw_deg)
+        best = y
+        best_dist = abs(angle_diff_deg(y, ref))
+        for k in range(-4, 5):
+            candidate = y + 90.0 * k
+            dist = abs(angle_diff_deg(candidate, ref))
+            if dist < best_dist:
+                best_dist = dist
+                best = candidate
+        y = best
+
+    period = math.fmod(y, 90.0)
+    if period < 0.0:
+        period += 90.0
+    if period > 45.0:
+        period = 90.0 - period
+    return period
 
 
-def apply_square_yaw_fold_to_transform(t_bed_workpiece: np.ndarray) -> np.ndarray:
-    """Rebuild bed transform with yaw folded into [0, 90) for square workpieces."""
-    folded_yaw_deg = fold_square_yaw_deg(yaw_from_matrix(t_bed_workpiece[:3, :3]))
+def apply_square_yaw_fold_to_transform(
+    t_bed_workpiece: np.ndarray,
+    *,
+    reference_yaw_deg: float | None = None,
+) -> np.ndarray:
+    """Rebuild bed transform with square-canonical yaw in [0, 90] degrees."""
+    folded_yaw_deg = fold_square_yaw_deg(
+        yaw_from_matrix(t_bed_workpiece[:3, :3]),
+        reference_yaw_deg=reference_yaw_deg,
+    )
     yaw_rad = math.radians(folded_yaw_deg)
     cos_yaw = math.cos(yaw_rad)
     sin_yaw = math.sin(yaw_rad)

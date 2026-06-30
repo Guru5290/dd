@@ -391,7 +391,11 @@ class WorkpiecePoseBedFrameNode(Node):
 
         t_bed_reported = self._reported_transform(t_bed_workpiece)
         if self._pose_settings.shape_mode.strip().lower() == 'square':
-            t_bed_reported = apply_square_yaw_fold_to_transform(t_bed_reported)
+            t_bed_reported = apply_square_yaw_fold_to_transform(
+                t_bed_reported,
+                reference_yaw_deg=self._latest_bed_yaw_deg,
+            )
+            self._latest_bed_yaw_deg = yaw_from_matrix(t_bed_reported[:3, :3])
         bed_margin = self.get_parameter('bed_margin_m').get_parameter_value().double_value
 
         if not is_pose_center_on_bed(
