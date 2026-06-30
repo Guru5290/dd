@@ -37,6 +37,7 @@ from cnc_perception.pose_solver import (
     solve_workpiece_pose_in_bed_frame,
 )
 from cnc_perception.transform_utils import (
+    apply_square_yaw_fold_to_transform,
     apply_coordinate_reporting_offset,
     flatten_transform_to_bed_plane,
     is_pose_center_on_bed,
@@ -389,6 +390,8 @@ class WorkpiecePoseBedFrameNode(Node):
         t_bed_workpiece, filter_phase = self._apply_bed_pose_filter(t_bed_workpiece, stamp_sec)
 
         t_bed_reported = self._reported_transform(t_bed_workpiece)
+        if self._pose_settings.shape_mode.strip().lower() == 'square':
+            t_bed_reported = apply_square_yaw_fold_to_transform(t_bed_reported)
         bed_margin = self.get_parameter('bed_margin_m').get_parameter_value().double_value
 
         if not is_pose_center_on_bed(

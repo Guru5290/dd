@@ -210,3 +210,31 @@ def square_yaw_match_error_deg(measured_yaw: float, reference_yaw: float) -> flo
         abs(angle_diff_deg(measured_yaw, reference_yaw + 90.0 * k))
         for k in range(4)
     )
+
+
+def fold_square_yaw_deg(yaw_deg: float) -> float:
+    """Fold yaw into [0, 90) degrees for square stock (90/180/270/360 -> 0)."""
+    folded = math.fmod(float(yaw_deg), 90.0)
+    if folded < 0.0:
+        folded += 90.0
+    if folded >= 90.0 - 1e-9:
+        folded = 0.0
+    return folded
+
+
+def apply_square_yaw_fold_to_transform(t_bed_workpiece: np.ndarray) -> np.ndarray:
+    """Rebuild bed transform with yaw folded into [0, 90) for square workpieces."""
+    folded_yaw_deg = fold_square_yaw_deg(yaw_from_matrix(t_bed_workpiece[:3, :3]))
+    yaw_rad = math.radians(folded_yaw_deg)
+    cos_yaw = math.cos(yaw_rad)
+    sin_yaw = math.sin(yaw_rad)
+    folded = t_bed_workpiece.copy()
+    folded[:3, :3] = np.array(
+        [
+            [cos_yaw, -sin_yaw, 0.0],
+            [sin_yaw, cos_yaw, 0.0],
+            [0.0, 0.0, 1.0],
+        ],
+        dtype=np.float64,
+    )
+    return folded

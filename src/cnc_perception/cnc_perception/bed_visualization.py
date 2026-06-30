@@ -295,7 +295,7 @@ def _make_target_outline_markers(
     solid.action = Marker.ADD
     solid.pose = _identity_pose()
     solid.scale.x = 0.005
-    solid.color = _color(0.1, 1.0, 0.2, 0.95)
+    solid.color = _color(0.72, 0.28, 0.95, 0.95)
     solid.points = corners + [corners[0]]
 
     outline = Marker()
@@ -307,7 +307,7 @@ def _make_target_outline_markers(
     outline.action = Marker.ADD
     outline.pose = _identity_pose()
     outline.scale.x = 0.006
-    outline.color = _color(0.1, 1.0, 0.2, 1.0)
+    outline.color = _color(0.72, 0.28, 0.95, 1.0)
     outline.points = _dotted_rectangle_points(corners, dash_length_m=0.008, gap_length_m=0.005)
 
     center = Marker()
@@ -322,7 +322,7 @@ def _make_target_outline_markers(
     center.pose.position.y = center_y
     center.pose.position.z = z
     center.scale = Vector3(x=0.008, y=0.008, z=0.008)
-    center.color = _color(0.1, 1.0, 0.2, 1.0)
+    center.color = _color(0.72, 0.28, 0.95, 1.0)
 
     yaw_rad = math.radians(target.yaw_deg)
     axis_len = min(dimensions.width_m, dimensions.length_m) * 0.45
@@ -357,7 +357,7 @@ def _make_target_outline_markers(
     label.pose.position.y = center_y
     label.pose.position.z = z + 0.02
     label.scale.z = 0.014
-    label.color = _color(0.2, 1.0, 0.3, 1.0)
+    label.color = _color(0.78, 0.45, 1.0, 1.0)
     label.text = (
         f'TARGET {target.x_m*1000:.0f},{target.y_m*1000:.0f} mm '
         f'yaw {target.yaw_deg:.0f} deg'

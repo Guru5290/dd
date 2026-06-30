@@ -8,7 +8,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from cnc_perception.bed_config import TargetPlacement
-from cnc_perception.transform_utils import yaw_from_matrix
+from cnc_perception.transform_utils import fold_square_yaw_deg, yaw_from_matrix
 
 
 @dataclass(frozen=True)
@@ -29,6 +29,8 @@ def check_placement(
     t_bed_workpiece: np.ndarray,
     workpiece_thickness_m: float,
     target: TargetPlacement,
+    *,
+    square_yaw_fold: bool = False,
 ) -> PlacementResult:
     """
     Evaluate workpiece center pose in cnc_bed_frame.
@@ -39,11 +41,15 @@ def check_placement(
     y_m = float(t_bed_workpiece[1, 3])
     z_m = float(t_bed_workpiece[2, 3])
     yaw_deg = yaw_from_matrix(t_bed_workpiece)
+    target_yaw_deg = target.yaw_deg
+    if square_yaw_fold:
+        yaw_deg = fold_square_yaw_deg(yaw_deg)
+        target_yaw_deg = fold_square_yaw_deg(target_yaw_deg)
 
     dx_mm = (x_m - target.x_m) * 1000.0
     dy_mm = (y_m - target.y_m) * 1000.0
     dz_mm = (z_m - workpiece_thickness_m) * 1000.0
-    dyaw_deg = _angle_diff_deg(yaw_deg, target.yaw_deg)
+    dyaw_deg = yaw_deg - target_yaw_deg
 
     ok = (
         abs(dx_mm) <= target.tolerance_xy_mm
