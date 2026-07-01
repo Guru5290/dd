@@ -21,8 +21,8 @@ class TargetPlacement:
     y_m: float
     z_m: float
     yaw_deg: float
-    tolerance_xy_mm: float
-    tolerance_z_mm: float
+    tolerance_x_mm: float
+    tolerance_y_mm: float
     tolerance_yaw_deg: float
 
 
@@ -70,6 +70,7 @@ def load_bed_config(config_path: str) -> BedConfig:
     reporting = raw.get('coordinate_reporting', {})
     subtract_x_mm = float(reporting.get('subtract_from_x_mm', 0.0))
     subtract_y_mm = float(reporting.get('subtract_from_y_mm', 0.0))
+    default_xy_mm = float(tol.get('xy_mm', 2.0))
 
     return BedConfig(
         bed=BedDimensions(
@@ -89,8 +90,8 @@ def load_bed_config(config_path: str) -> BedConfig:
             y_m=float(target.get('y_m', 0.1)),
             z_m=float(target.get('z_m', 0.0)),
             yaw_deg=float(target.get('yaw_deg', 0.0)),
-            tolerance_xy_mm=float(tol.get('xy_mm', 2.0)),
-            tolerance_z_mm=float(tol.get('z_mm', 1.5)),
+            tolerance_x_mm=float(tol.get('x_mm', default_xy_mm)),
+            tolerance_y_mm=float(tol.get('y_mm', default_xy_mm)),
             tolerance_yaw_deg=float(tol.get('yaw_deg', 3.0)),
         ),
         coordinate_reporting=CoordinateReporting(

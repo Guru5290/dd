@@ -35,7 +35,8 @@ def check_placement(
     """
     Evaluate workpiece center pose in cnc_bed_frame.
 
-    Z of workpiece top face should be approximately thickness when sitting on bed.
+    X, Y, and yaw pass when each delta is within +/- the configured tolerance.
+    Z is reported but not used for pass/fail (workpiece lies flat on the bed).
     """
     x_m = float(t_bed_workpiece[0, 3])
     y_m = float(t_bed_workpiece[1, 3])
@@ -52,9 +53,8 @@ def check_placement(
     dyaw_deg = yaw_deg - target_yaw_deg
 
     ok = (
-        abs(dx_mm) <= target.tolerance_xy_mm
-        and abs(dy_mm) <= target.tolerance_xy_mm
-        and abs(dz_mm) <= target.tolerance_z_mm
+        abs(dx_mm) <= target.tolerance_x_mm
+        and abs(dy_mm) <= target.tolerance_y_mm
         and abs(dyaw_deg) <= target.tolerance_yaw_deg
     )
 
@@ -65,7 +65,7 @@ def check_placement(
         )
     else:
         message = (
-            f'NOT CORRECT POSITION | delta=({dx_mm:+.1f}, {dy_mm:+.1f}, {dz_mm:+.1f}) mm '
+            f'NOT CORRECT POSITION | delta=({dx_mm:+.1f}, {dy_mm:+.1f}) mm '
             f'dyaw={dyaw_deg:+.1f} deg | target=({target.x_m*1000:.0f}, {target.y_m*1000:.0f}) mm'
         )
 

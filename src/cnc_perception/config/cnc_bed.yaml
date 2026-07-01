@@ -33,10 +33,11 @@ target_placement:
   y_m: 0.100
   z_m: 0.0
   yaw_deg: 0.0
+  # Pass when measured pose is within +/- tolerance of target x_m, y_m, yaw_deg.
   tolerance:
-    xy_mm: 2.0
-    z_mm: 1.5
-    yaw_deg: 3.0
+    x_mm: 0.3
+    y_mm: 0.4
+    yaw_deg: 0.7
 
 workpiece_mesh:
   enabled: false

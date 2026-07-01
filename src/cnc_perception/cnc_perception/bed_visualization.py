@@ -294,7 +294,7 @@ def _make_target_outline_markers(
     solid.type = Marker.LINE_STRIP
     solid.action = Marker.ADD
     solid.pose = _identity_pose()
-    solid.scale.x = 0.005
+    solid.scale.x = 0.002
     solid.color = _color(0.72, 0.28, 0.95, 0.95)
     solid.points = corners + [corners[0]]
 
@@ -306,9 +306,9 @@ def _make_target_outline_markers(
     outline.type = Marker.LINE_LIST
     outline.action = Marker.ADD
     outline.pose = _identity_pose()
-    outline.scale.x = 0.006
+    outline.scale.x = 0.002
     outline.color = _color(0.72, 0.28, 0.95, 1.0)
-    outline.points = _dotted_rectangle_points(corners, dash_length_m=0.008, gap_length_m=0.005)
+    outline.points = _dotted_rectangle_points(corners, dash_length_m=0.006, gap_length_m=0.004)
 
     center = Marker()
     center.header.stamp = stamp
@@ -321,7 +321,7 @@ def _make_target_outline_markers(
     center.pose.position.x = center_x
     center.pose.position.y = center_y
     center.pose.position.z = z
-    center.scale = Vector3(x=0.008, y=0.008, z=0.008)
+    center.scale = Vector3(x=0.005, y=0.005, z=0.005)
     center.color = _color(0.72, 0.28, 0.95, 1.0)
 
     yaw_rad = math.radians(target.yaw_deg)
@@ -334,7 +334,7 @@ def _make_target_outline_markers(
     yaw_axis.type = Marker.LINE_LIST
     yaw_axis.action = Marker.ADD
     yaw_axis.pose = _identity_pose()
-    yaw_axis.scale.x = 0.005
+    yaw_axis.scale.x = 0.002
     yaw_axis.color = _color(1.0, 1.0, 0.15, 1.0)
     yaw_axis.points = [
         Point(x=center_x, y=center_y, z=z),

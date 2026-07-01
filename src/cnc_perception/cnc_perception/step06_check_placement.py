@@ -89,10 +89,8 @@ class CheckPlacementNode(Node):
         detail.color.b = 1.0
         detail.color.a = 1.0
         detail.text = (
-            f'X={result.x_mm:.1f} Y={result.y_mm:.1f} Z={result.z_mm:.1f} mm '
-            f'yaw={result.yaw_deg:.1f} deg | '
-            f'dX={result.dx_mm:+.1f} dY={result.dy_mm:+.1f} dZ={result.dz_mm:+.1f} mm '
-            f'dYaw={result.dyaw_deg:+.1f} deg'
+            f'X={result.x_mm:.1f} Y={result.y_mm:.1f} mm yaw={result.yaw_deg:.1f} deg | '
+            f'dX={result.dx_mm:+.1f} dY={result.dy_mm:+.1f} mm dYaw={result.dyaw_deg:+.1f} deg'
         )
         markers.markers.append(detail)
         self._marker_pub.publish(markers)
