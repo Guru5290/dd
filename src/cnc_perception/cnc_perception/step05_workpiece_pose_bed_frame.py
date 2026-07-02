@@ -16,6 +16,7 @@ from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import CameraInfo, Image
 from std_msgs.msg import String
+from std_srvs.srv import Trigger
 from tf2_ros import Buffer, TransformBroadcaster, TransformListener
 from visualization_msgs.msg import MarkerArray
 
@@ -27,7 +28,7 @@ from cnc_perception.contour_detector import (
     diagnose_contours,
     draw_detection_debug,
 )
-from cnc_perception.pose_ekf import BedPoseEkf
+from cnc_perception.pose_ekf import BedPoseEkf, RecoveryTracker, check_auto_recovery
 from cnc_perception.pose_solver import (
     PoseEstimate,
     camera_info_to_matrices,
@@ -89,6 +90,7 @@ class WorkpiecePoseBedFrameNode(Node):
             square_mode=self._pose_settings.is_square_stock,
             config=self._pose_settings.ekf,
         )
+        self._recovery_tracker = RecoveryTracker()
         self._consecutive_failures = 0
         self._detection_active = False
         self._estimation_source = 'none'
@@ -108,6 +110,7 @@ class WorkpiecePoseBedFrameNode(Node):
             CameraInfo, camera_info_topic, self._info_cb, qos_profile_sensor_data
         )
         self.create_subscription(Image, image_topic, self._image_cb, QOS_IMAGE_SUB)
+        self.create_service(Trigger, '/workpiece/reset_filter', self._reset_filter_cb)
         self.create_timer(0.2, self._publish_bed_markers)
         self._publish_bed_markers()
         self.get_logger().info(
@@ -115,6 +118,7 @@ class WorkpiecePoseBedFrameNode(Node):
             f'ekf={"on" if self._pose_settings.ekf.enabled else "off"} '
             f'warmup={self._pose_settings.ekf.warmup_sec:.0f}s '
             f'workpiece {self._dimensions.width_m*1000:.0f}x{self._dimensions.length_m*1000:.0f} mm. '
+            f'Reset filter: ros2 service call /workpiece/reset_filter std_srvs/srv/Trigger. '
             f'RViz: /cnc_bed/target_markers + /workpiece/markers'
         )
 
@@ -178,6 +182,20 @@ class WorkpiecePoseBedFrameNode(Node):
             )
         return None
 
+    def _reset_pose_filter(self, reason: str) -> None:
+        self._latest_pose = None
+        self._latest_bed_transform = None
+        self._latest_bed_yaw_deg = None
+        self._bed_ekf.reset()
+        self._recovery_tracker.reset_counters()
+        self.get_logger().warn(f'Pose filter reset: {reason}. EKF re-warming.')
+
+    def _reset_filter_cb(self, _request, response):
+        self._reset_pose_filter('manual service request')
+        response.success = True
+        response.message = 'Pose filter reset; EKF will re-warmup from raw measurements.'
+        return response
+
     def _handle_detection_lost(self, stamp) -> None:
         self._consecutive_failures += 1
         if self._detection_active:
@@ -185,10 +203,7 @@ class WorkpiecePoseBedFrameNode(Node):
             self._detection_active = False
         reset_after = max(1, self._detection.lost_frames_to_reset_smoothing)
         if self._consecutive_failures >= reset_after:
-            self._latest_pose = None
-            self._latest_bed_transform = None
-            self._latest_bed_yaw_deg = None
-            self._bed_ekf.reset()
+            self._reset_pose_filter('workpiece detection lost')
         if self._consecutive_failures == 1:
             self.get_logger().info('Workpiece lost — cube hidden.', throttle_duration_sec=1.0)
 
@@ -275,7 +290,9 @@ class WorkpiecePoseBedFrameNode(Node):
         pose, detection = self._estimate_markerless(image, t_bed_from_optical, max_tilt)
         return pose, detection, 'markerless'
 
-    def _apply_bed_pose_filter(self, t_bed_workpiece: np.ndarray, stamp_sec: float) -> tuple[np.ndarray, str]:
+    def _apply_bed_pose_filter(
+        self, t_bed_workpiece: np.ndarray, stamp_sec: float
+    ) -> tuple[np.ndarray, str, bool]:
         if self._detection.assume_flat_on_bed:
             t_bed_workpiece = flatten_transform_to_bed_plane(
                 t_bed_workpiece,
@@ -285,7 +302,7 @@ class WorkpiecePoseBedFrameNode(Node):
             ekf_result = self._bed_ekf.filter_transform(t_bed_workpiece, stamp_sec)
             self._latest_bed_transform = ekf_result.transform.copy()
             self._latest_bed_yaw_deg = yaw_from_matrix(ekf_result.transform[:3, :3])
-            return ekf_result.transform, ekf_result.phase
+            return ekf_result.transform, ekf_result.phase, ekf_result.gated
 
         if self._detection.assume_flat_on_bed:
             t_bed_workpiece = smooth_flat_bed_transform(
@@ -296,7 +313,7 @@ class WorkpiecePoseBedFrameNode(Node):
             )
         self._latest_bed_transform = t_bed_workpiece.copy()
         self._latest_bed_yaw_deg = yaw_from_matrix(t_bed_workpiece[:3, :3])
-        return t_bed_workpiece, 'LEGACY'
+        return t_bed_workpiece, 'LEGACY', False
 
     def _image_cb(self, msg: Image) -> None:
         if self._camera_matrix is None:
@@ -387,7 +404,9 @@ class WorkpiecePoseBedFrameNode(Node):
         tf_optical_wp.transform.rotation = rotation_matrix_to_quaternion(pose.rotation_matrix)
 
         t_bed_workpiece = t_bed_link @ t_link_workpiece
-        t_bed_workpiece, filter_phase = self._apply_bed_pose_filter(t_bed_workpiece, stamp_sec)
+        t_bed_workpiece, filter_phase, measurement_gated = self._apply_bed_pose_filter(
+            t_bed_workpiece, stamp_sec
+        )
 
         t_bed_reported = self._reported_transform(t_bed_workpiece)
         if self._pose_settings.shape_mode.strip().lower() == 'square':
@@ -396,6 +415,26 @@ class WorkpiecePoseBedFrameNode(Node):
                 reference_yaw_deg=self._latest_bed_yaw_deg,
             )
             self._latest_bed_yaw_deg = yaw_from_matrix(t_bed_reported[:3, :3])
+
+        x_mm = float(t_bed_reported[0, 3]) * 1000.0
+        y_mm = float(t_bed_reported[1, 3]) * 1000.0
+        target_x_mm = self._bed_config.target.x_m * 1000.0
+        target_y_mm = self._bed_config.target.y_m * 1000.0
+        recovery_reason = check_auto_recovery(
+            filter_phase=filter_phase,
+            gated=measurement_gated,
+            x_mm=x_mm,
+            y_mm=y_mm,
+            target_x_mm=target_x_mm,
+            target_y_mm=target_y_mm,
+            config=self._pose_settings.ekf,
+            tracker=self._recovery_tracker,
+        )
+        if recovery_reason is not None:
+            self._reset_pose_filter(recovery_reason)
+            self._publish_debug_frame(image, msg, detection, 'FILTER RESET')
+            return
+
         bed_margin = self.get_parameter('bed_margin_m').get_parameter_value().double_value
 
         if not is_pose_center_on_bed(
@@ -404,8 +443,6 @@ class WorkpiecePoseBedFrameNode(Node):
             self._bed_config.bed.width_m,
             margin_m=bed_margin,
         ):
-            x_mm = float(t_bed_reported[0, 3]) * 1000.0
-            y_mm = float(t_bed_reported[1, 3]) * 1000.0
             z_mm = float(t_bed_reported[2, 3]) * 1000.0
             self.get_logger().warn(
                 f'Workpiece center outside CNC bed — not publishing bed pose. '
@@ -445,8 +482,6 @@ class WorkpiecePoseBedFrameNode(Node):
         tf_bed_wp.transform.rotation = bed_quat
         self._tf_broadcaster.sendTransform([tf_bed_wp, tf_optical_wp])
 
-        x_mm = float(t_bed_reported[0, 3]) * 1000.0
-        y_mm = float(t_bed_reported[1, 3]) * 1000.0
         z_mm = float(t_bed_reported[2, 3]) * 1000.0
         yaw_deg = yaw_from_matrix(t_bed_reported[:3, :3])
         status_lines = self._format_status_lines(

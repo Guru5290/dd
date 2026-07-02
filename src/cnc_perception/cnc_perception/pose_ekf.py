@@ -23,6 +23,10 @@ class EkfConfig:
     measurement_noise_xy_m: float
     measurement_noise_z_m: float
     measurement_noise_yaw_deg: float
+    recovery_enabled: bool = True
+    recovery_gated_frames: int = 30
+    recovery_off_target_xy_mm: float = 15.0
+    recovery_off_target_frames: int = 45
 
 
 @dataclass(frozen=True)
@@ -212,3 +216,56 @@ class BedPoseEkf:
             gain = float(self._covariance[index, index] / variance)
             self._state[index] += gain * innovation
             self._covariance[index, index] *= max(0.0, 1.0 - gain)
+
+
+@dataclass
+class RecoveryTracker:
+    consecutive_gated: int = 0
+    consecutive_off_target: int = 0
+
+    def reset_counters(self) -> None:
+        self.consecutive_gated = 0
+        self.consecutive_off_target = 0
+
+
+def check_auto_recovery(
+    *,
+    filter_phase: str,
+    gated: bool,
+    x_mm: float,
+    y_mm: float,
+    target_x_mm: float,
+    target_y_mm: float,
+    config: EkfConfig,
+    tracker: RecoveryTracker,
+) -> Optional[str]:
+    """Return a reset reason when the filter should re-warmup, else None."""
+    if not config.enabled or not config.recovery_enabled:
+        return None
+    if filter_phase in ('WARMUP', 'RAW', 'EKF_INIT'):
+        tracker.reset_counters()
+        return None
+
+    if gated:
+        tracker.consecutive_gated += 1
+    else:
+        tracker.consecutive_gated = 0
+
+    distance_mm = math.hypot(x_mm - target_x_mm, y_mm - target_y_mm)
+    if distance_mm > config.recovery_off_target_xy_mm:
+        tracker.consecutive_off_target += 1
+    else:
+        tracker.consecutive_off_target = 0
+
+    if tracker.consecutive_gated >= config.recovery_gated_frames:
+        return (
+            f'EKF rejected {tracker.consecutive_gated} consecutive measurements '
+            f'(threshold {config.recovery_gated_frames})'
+        )
+    if tracker.consecutive_off_target >= config.recovery_off_target_frames:
+        return (
+            f'pose {distance_mm:.1f} mm from target for '
+            f'{tracker.consecutive_off_target} frames '
+            f'(threshold {config.recovery_off_target_xy_mm:.1f} mm)'
+        )
+    return None

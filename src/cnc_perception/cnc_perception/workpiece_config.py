@@ -126,6 +126,7 @@ def load_workpiece_config(
     pose = raw.get('pose', {})
     pose_estimation = raw.get('pose_estimation', {})
     ekf_raw = pose_estimation.get('ekf', {})
+    recovery_raw = ekf_raw.get('recovery', {})
     marker_raw = raw.get('workpiece_marker', pose_estimation.get('workpiece_marker', {}))
 
     dimensions = WorkpieceDimensions(
@@ -212,6 +213,10 @@ def load_workpiece_config(
             measurement_noise_xy_m=float(ekf_raw.get('measurement_noise_xy_m', 0.002)),
             measurement_noise_z_m=float(ekf_raw.get('measurement_noise_z_m', 0.001)),
             measurement_noise_yaw_deg=float(ekf_raw.get('measurement_noise_yaw_deg', 3.0)),
+            recovery_enabled=bool(recovery_raw.get('enabled', True)),
+            recovery_gated_frames=int(recovery_raw.get('gated_frames', 30)),
+            recovery_off_target_xy_mm=float(recovery_raw.get('off_target_xy_mm', 15.0)),
+            recovery_off_target_frames=int(recovery_raw.get('off_target_frames', 45)),
         ),
         marker=marker_config,
     )
