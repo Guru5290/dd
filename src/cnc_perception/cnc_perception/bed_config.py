@@ -70,7 +70,7 @@ def load_bed_config(config_path: str) -> BedConfig:
     reporting = raw.get('coordinate_reporting', {})
     subtract_x_mm = float(reporting.get('subtract_from_x_mm', 0.0))
     subtract_y_mm = float(reporting.get('subtract_from_y_mm', 0.0))
-    default_xy_mm = float(tol.get('xy_mm', 2.0))
+    default_xy_mm = float(tol.get('xy_mm', 1.0))
 
     return BedConfig(
         bed=BedDimensions(
@@ -92,7 +92,7 @@ def load_bed_config(config_path: str) -> BedConfig:
             yaw_deg=float(target.get('yaw_deg', 0.0)),
             tolerance_x_mm=float(tol.get('x_mm', default_xy_mm)),
             tolerance_y_mm=float(tol.get('y_mm', default_xy_mm)),
-            tolerance_yaw_deg=float(tol.get('yaw_deg', 3.0)),
+            tolerance_yaw_deg=float(tol.get('yaw_deg', 1.0)),
         ),
         coordinate_reporting=CoordinateReporting(
             subtract_x_m=subtract_x_mm / 1000.0,

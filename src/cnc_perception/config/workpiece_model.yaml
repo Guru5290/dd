@@ -1,7 +1,7 @@
 # 60 x 30 mm rectangular workpiece (meters).
 workpiece:
-  width_m: 0.060
-  length_m: 0.030
+  width_m: 0.050
+  length_m: 0.050
   thickness_m: 0.010
 
 object_frame:
@@ -13,24 +13,24 @@ object_frame:
 # markerless | marked | marked_fallback
 pose_estimation:
   mode: markerless
-  # auto | square | rectangle — use rectangle for 60x30, square for equal sides.
-  shape_mode: rectangle
+  # auto | square | rectangle 
+  shape_mode: square
   ekf:
     enabled: true
-    warmup_sec: 15.0
-    max_yaw_rate_deg_s: 90.0
-    max_position_rate_m_s: 0.5
-    process_noise_xy_m: 0.0005
+    warmup_sec: 0.0
+    max_yaw_rate_deg_s: 5 #90.0
+    max_position_rate_m_s: 0.05 #0.5 then changed to 0.05 and now to the value shown here
+    process_noise_xy_m: 0.0005 #was 0.0005 and has been lowered since the workpiece is fixed
     process_noise_z_m: 0.0002
-    process_noise_yaw_deg: 2.0
-    measurement_noise_xy_m: 0.002
+    process_noise_yaw_deg: 2 #was 2 deg, and has been lowered since the workpiece is fixed.
+    measurement_noise_xy_m: 0.002  #was 0.002: increased since X/Y is a little jittery
     measurement_noise_z_m: 0.001
-    measurement_noise_yaw_deg: 3.0
+    measurement_noise_yaw_deg: 3.0 #was 3 deg: increased to remove any remaining wobles
     recovery:
       enabled: true
-      gated_frames: 30
-      off_target_xy_mm: 15.0
-      off_target_frames: 45
+      gated_frames: 15
+      off_target_xy_mm: 2.0
+      off_target_frames: 20
 
 # Used when pose_estimation.mode is marked or marked_fallback.
 # Print a second ArUco (e.g. id=1, 20 mm) and glue on the workpiece top face.
@@ -68,7 +68,7 @@ detection:
   try_otsu_threshold: true
   use_relaxed_fallback: true
   roi:
-    enabled: false
+    enabled: false  # was false
     x_min_ratio: 0.0
     y_min_ratio: 0.0
     x_max_ratio: 1.0
@@ -86,5 +86,5 @@ pose:
   # Legacy smoothing — used only when ekf.enabled is false.
   bed_pose_smoothing_alpha: 0.45
   bed_yaw_smoothing_alpha: 0.55
-  square_yaw_stability_weight: 0.0
+  square_yaw_stability_weight: 0.0  # was 0.0
   lost_frames_to_reset_smoothing: 1

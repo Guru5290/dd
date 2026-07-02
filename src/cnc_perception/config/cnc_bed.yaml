@@ -1,8 +1,8 @@
 # CNC bed frame for Genmitsu 3018-PRO (meters).
 # Origin: FRONT-LEFT corner of the metal bed (ArUco marker center at calibration).
 # Matches labels on your bed: +X right, +Y toward back of machine.
-cnc_bed:
-  length_m: 0.284
+cnc_bed:   #milling area is 0.284 x 0.180
+  length_m: 0.300
   width_m: 0.180
   origin_corner: front_left
   axis_convention:
@@ -13,8 +13,12 @@ cnc_bed:
 # Reported X/Y in step05 are shifted so 0,0 matches the metal front-left corner.
 # Calibration uses the ArUco center as cnc_bed_frame origin; metal corner is +24,+24 mm.
 coordinate_reporting:
-  subtract_from_x_mm: 24.0
-  subtract_from_y_mm: 24.0
+  subtract_from_x_mm: -24.0 # since I placed the marker such that the bottom left of 
+  # the marker coincides with the bottom left of the bed, yet the center of the marker
+  # was suppose to coincide with the bottom left corner of the bed, then for it to 
+  # to be consistent I need to subtract the marker half width and radius which in this case
+  # is 0.024m.
+  subtract_from_y_mm: -24.0
 
 reference_marker:
   type: aruco
@@ -25,19 +29,18 @@ reference_marker:
   # See SETUP_AND_CALIBRATION_GUIDE.md for marker print orientation.
   # After placing marker, tune only if RViz bed axes do not match real bed edges.
   marker_to_bed_yaw_deg: 0.0
-  flip_marker_y: true
+  flip_marker_y: false
 
 target_placement:
-  show_target_marker: true
+  show_target_marker: true #true
   x_m: 0.100
   y_m: 0.100
   z_m: 0.0
-  yaw_deg: 0.0
-  # Pass when measured pose is within +/- tolerance of target x_m, y_m, yaw_deg.
+  yaw_deg: 0.55
   tolerance:
-    x_mm: 0.3
-    y_mm: 0.4
-    yaw_deg: 0.7
+    xy_mm: 0.9
+    z_mm: 0.9
+    yaw_deg: 0.99
 
 workpiece_mesh:
   enabled: false

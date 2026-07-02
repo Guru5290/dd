@@ -61,7 +61,7 @@ class CheckPlacementNode(Node):
         self._status_pub.publish(status)
 
         level = 'info' if result.ok else 'warn'
-        getattr(self.get_logger(), level)(result.message)
+        self.get_logger().info(result.message)
 
         stamp = self.get_clock().now().to_msg()
         markers = MarkerArray()

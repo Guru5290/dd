@@ -286,17 +286,17 @@ def _make_target_outline_markers(
         z,
     )
 
-    solid = Marker()
-    solid.header.stamp = stamp
-    solid.header.frame_id = frame_id
-    solid.ns = 'target'
-    solid.id = marker_id
-    solid.type = Marker.LINE_STRIP
-    solid.action = Marker.ADD
-    solid.pose = _identity_pose()
-    solid.scale.x = 0.002
-    solid.color = _color(0.72, 0.28, 0.95, 0.95)
-    solid.points = corners + [corners[0]]
+    # solid = Marker()
+    # solid.header.stamp = stamp
+    # solid.header.frame_id = frame_id
+    # solid.ns = 'target'
+    # solid.id = marker_id
+    # solid.type = Marker.LINE_STRIP
+    # solid.action = Marker.ADD
+    # solid.pose = _identity_pose()
+    # solid.scale.x = 0.002
+    # solid.color = _color(0.72, 0.28, 0.95, 0.95)
+    # solid.points = corners + [corners[0]]
 
     outline = Marker()
     outline.header.stamp = stamp
@@ -363,7 +363,7 @@ def _make_target_outline_markers(
         f'yaw {target.yaw_deg:.0f} deg'
     )
 
-    return [solid, outline, center, yaw_axis, label]
+    return [outline, center, yaw_axis, label]  #there was solid too incase you want a solid line
 
 
 def make_placement_status_marker(

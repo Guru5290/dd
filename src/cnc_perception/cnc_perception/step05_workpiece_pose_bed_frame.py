@@ -65,7 +65,7 @@ class WorkpiecePoseBedFrameNode(Node):
         self.declare_parameter('bed_config_path', '')
         self.declare_parameter('image_topic', '/image_rect_color')
         self.declare_parameter('camera_info_topic', '/camera_info')
-        self.declare_parameter('max_reprojection_error_px', 10.0)
+        self.declare_parameter('max_reprojection_error_px', 8.0)
         self.declare_parameter('bed_margin_m', 0.005)
         self.declare_parameter('max_surface_tilt_deg', 35.0)
         self.declare_parameter('publish_pose_only_when_flat', True)

@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=CNC Operator GUI
+GenericName=CNC Perception Panel
+Comment=Launch the CNC perception operator control panel
+Exec=/home/d/Downloads/dd/operator_gui/launch_gui.sh
+Icon=/home/d/Downloads/dd/operator_gui/assets/cnc-operator-icon.svg
+Path=/home/d/Downloads/dd/operator_gui
+Terminal=false
+StartupNotify=true
+Categories=Development;Engineering;Robotics;
+Keywords=CNC;ROS;Perception;Operator;

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <rect width="256" height="256" rx="48" fill="#1e3a5f"/>
+  <rect x="40" y="72" width="176" height="120" rx="16" fill="#2563eb"/>
+  <rect x="64" y="96" width="128" height="72" rx="8" fill="#dbeafe"/>
+  <circle cx="128" cy="132" r="28" fill="#1d4ed8"/>
+  <circle cx="128" cy="132" r="14" fill="#eff6ff"/>
+  <text x="128" y="56" text-anchor="middle" font-family="Arial, sans-serif" font-size="34" font-weight="700" fill="#ffffff">CNC</text>
+</svg>
