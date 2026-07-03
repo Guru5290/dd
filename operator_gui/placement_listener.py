@@ -28,20 +28,21 @@ _DELTA_RE = re.compile(
 
 
 def parse_placement_message(text: str) -> PlacementStatus:
-    if 'CORRECT POSITION' in text:
-        return PlacementStatus(ok=True, message=text)
-    if 'NOT CORRECT POSITION' in text:
-        match = _DELTA_RE.search(text)
+    normalized = text.strip()
+    if 'NOT CORRECT POSITION' in normalized:
+        match = _DELTA_RE.search(normalized)
         if match:
             return PlacementStatus(
                 ok=False,
-                message=text,
+                message=normalized,
                 dx_mm=float(match.group(1)),
                 dy_mm=float(match.group(2)),
                 dyaw_deg=float(match.group(3)),
             )
-        return PlacementStatus(ok=False, message=text)
-    return PlacementStatus(ok=None, message=text)
+        return PlacementStatus(ok=False, message=normalized)
+    if 'CORRECT POSITION' in normalized:
+        return PlacementStatus(ok=True, message=normalized)
+    return PlacementStatus(ok=None, message=normalized)
 
 
 class PlacementListener:
